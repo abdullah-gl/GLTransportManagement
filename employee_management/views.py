@@ -126,10 +126,20 @@ def handle_employee_form(request: HttpRequest) -> HttpResponse:
         if not is_valid:
             messages.error(request, error_message)
             return redirect('handle_employee_form')
-
-        fs = FileSystemStorage(location=settings.MEDIA_ROOT)
+        
+        
+        # fs = FileSystemStorage(location=settings.MEDIA_ROOT)
+        # file_path = fs.save(uploaded_file.name, uploaded_file)
+        # full_path = fs.path(file_path)
+        
+        employee_media_path = os.path.join(settings.MEDIA_ROOT, "employee")
+        if not os.path.exists(employee_media_path):
+            os.makedirs(employee_media_path)
+        fs = FileSystemStorage(location=employee_media_path)
         file_path = fs.save(uploaded_file.name, uploaded_file)
         full_path = fs.path(file_path)
+        
+        logging.info(f'Full Path is {full_path} and File path {file_path}')
 
         try:
             data = FileHandler.process_file(full_path)
@@ -139,9 +149,11 @@ def handle_employee_form(request: HttpRequest) -> HttpResponse:
             data_dict = data.to_dict(orient='records')
             request.session['data_dict'] = data_dict
             messages.success(request, 'File uploaded and processed successfully!')
+        except Exception as e:
+            logging.error(f"Error is: {str(e)}")
 
-        finally:
-            fs.delete(file_path)
+        # finally:
+        #     fs.delete(file_path)
 
     except Exception as e:
         logger.error(f"Error processing file: {str(e)}", exc_info=True)

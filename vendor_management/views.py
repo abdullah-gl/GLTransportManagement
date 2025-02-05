@@ -10,8 +10,12 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
+from email import encoders
+from email.mime.base import MIMEBase
 import os
 from dotenv import load_dotenv
+
+from .transport_image import TransportDataProcessor
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -88,95 +92,72 @@ class EmailService:
             raise EmailServiceError("Email credentials not properly configured")
 
     @staticmethod
-    def format_route_email_body(route_data: List[Dict]) -> str:
-        try:
-            route_no = route_data[0].get('Route No', 'N/A')
-            body = f"<h2>Route Number: {route_no}</h2><h3>Vehicle Details:</h3>"
-            
-            for vehicle in route_data:
-                body += (
-                    "<div style='margin-bottom: 20px; padding: 10px; border: 1px solid #ccc;'>"
-                    f"<p>🔹 Vendor Name: {vehicle.get('Vendor Name', 'N/A')}</p>"
-                    f"<p>🔹 Contact: {vehicle.get('Contact No.', 'N/A')}</p>"
-                    f"<p>🔹 Email: {vehicle.get('Vendor Email', 'N/A')}</p>"
-                    f"<p>🔹 Address: {vehicle.get('Address (Office Reporting Time 07:20 Hrs & Departure Time 16:45 Hrs)', 'N/A')}</p>"
-                    "</div>"
-                )
-            
-            return body + "<p>Best regards,<br>Admin Team</p>"
-        except Exception as e:
-            logger.error(f"Error formatting email body: {str(e)}", exc_info=True)
-            raise EmailServiceError(f"Error formatting email body: {str(e)}")
-
-    def send_email(self, to_email: str, subject: str, body: str, attachment_path: str = None) -> bool:
-        """Send email with improved error handling and logging"""
-        logger.info(f"Attempting to send email to: {to_email}")
+    def format_route_email_body(route_data: str) -> str:        
+        body = f"""
+        Dear {route_data},
         
-        # Basic email validation
-        if not isinstance(to_email, str) or '@' not in to_email or to_email.lower() == 'vendor email':
-            logger.warning(f"Invalid email address: {to_email}")
+        Please find the attached All route Excel File and with Indidual Route Image.
+        
+        Best regards,
+        Admin Team
+        """       
+        return body
+
+    def send_email(self, vendor_email: str, subject, body, vendor_file_name, vendor_data, vendor_name) -> bool:
+        if '@' not in vendor_email:
+            logger.warning(f"Invalid email: {vendor_email}")
             return False
 
         try:
-            # Create message
-            msg = MIMEMultipart('alternative')  # Changed to 'alternative' for better HTML support
-            msg['From'] = self.sender_email
-            msg['To'] = to_email
+            msg = MIMEMultipart()
             msg['Subject'] = subject
+            msg['From'] = self.sender_email
+            msg['To'] = vendor_email
             
-            # Attach HTML body
-            html_part = MIMEText(body, 'html', 'utf-8')
+            # Attach the XLSX file
+            media_directory = settings.MEDIA_ROOT
+            # xlsx_filename = os.path.join(media_directory, [filename for filename in os.listdir(media_directory) if filename.lower().endswith((".csv", ".xlsx"))][0])
+
+            with open(vendor_file_name, "rb") as xlsx_file:
+                part = MIMEBase("application", "octet-stream")
+                part.set_payload(xlsx_file.read())
+                encoders.encode_base64(part)
+                part.add_header(
+                    "Content-Disposition",
+                    f"attachment; filename={vendor_file_name}",
+                )
+                msg.attach(part)
+
+            # Attach the image files
+            vendor_directory_path = os.path.dirname(vendor_file_name)
+            image_filenames = [os.path.join(vendor_directory_path, filename) for filename in os.listdir(vendor_directory_path) if filename.lower().endswith((".png", ".jpg", ".jpeg")) and vendor_name.lower().replace(" ", "_") in filename.lower()]
+            for image_filename in image_filenames:
+                with open(image_filename, "rb") as image_file:
+                    part = MIMEBase("application", "octet-stream")
+                    part.set_payload(image_file.read())
+                    encoders.encode_base64(part)
+                    part.add_header(
+                        "Content-Disposition",
+                        f"attachment; filename={image_filename}",
+                    )
+                    msg.attach(part)
+
+            
+            html_part = MIMEText(body)
             msg.attach(html_part)
+            msg.attach(part)
 
-            # Handle attachment
-            if attachment_path:
-                if not os.path.exists(attachment_path):
-                    logger.error(f"Attachment file not found: {attachment_path}")
-                    raise EmailServiceError("Attachment file not found")
-                
-                try:
-                    with open(attachment_path, 'rb') as f:
-                        attachment = MIMEApplication(f.read())
-                        attachment.add_header(
-                            'Content-Disposition', 
-                            'attachment', 
-                            filename=os.path.basename(attachment_path)
-                        )
-                        msg.attach(attachment)
-                        logger.info(f"Attached file: {attachment_path}")
-                except Exception as e:
-                    logger.error(f"Error attaching file: {str(e)}")
-                    raise EmailServiceError(f"Error attaching file: {str(e)}")
-
-            # Connect to SMTP server with explicit SSL/TLS
-            logger.info("Connecting to SMTP server...")
-            with smtplib.SMTP(Config.EMAIL_HOST, Config.EMAIL_PORT, timeout=30) as server:
-                server.set_debuglevel(1)  # Enable SMTP debug output
-                server.ehlo()  # Identify ourselves to the server
-                server.starttls()  # Enable TLS encryption
-                server.ehlo()  # Re-identify ourselves over TLS connection
-                
-                # Login
-                logger.info("Attempting SMTP login...")
+            with smtplib.SMTP(Config.EMAIL_HOST, Config.EMAIL_PORT) as server:
+                server.starttls()
                 server.login(self.sender_email, self.sender_password)
-                
-                # Send email
-                logger.info("Sending email...")
                 server.send_message(msg)
-
-            logger.info(f"Email successfully sent to {to_email}")
+            
+            logger.info(f"Email sent to {vendor_email}")
             return True
 
-        except smtplib.SMTPAuthenticationError as e:
-            logger.error(f"SMTP Authentication failed: {str(e)}")
-            raise EmailServiceError("Email authentication failed. Check your credentials.")
-        except smtplib.SMTPException as e:
-            logger.error(f"SMTP error occurred: {str(e)}")
-            raise EmailServiceError(f"SMTP error: {str(e)}")
         except Exception as e:
-            logger.error(f"Unexpected error sending email to {to_email}: {str(e)}", exc_info=True)
-            raise EmailServiceError(f"Error sending email: {str(e)}")
-
+            logger.error(f"Email failed to {vendor_email}: {str(e)}")
+            return False
 
 
 
@@ -193,10 +174,14 @@ def handle_vendor_form(request: HttpRequest) -> HttpResponse:
         if not is_valid:
             messages.error(request, error_message)
             return redirect('handle_vendor_form')
-
-        fs = FileSystemStorage(location=settings.MEDIA_ROOT)
+        
+        vendor_media_path = os.path.join(settings.MEDIA_ROOT, "vendor")
+        if not os.path.exists(vendor_media_path):
+            os.makedirs(vendor_media_path)
+        fs = FileSystemStorage(location=vendor_media_path)
         file_path = fs.save(uploaded_file.name, uploaded_file)
-        full_path = os.path.join(settings.MEDIA_ROOT, file_path)
+        full_path = fs.path(file_path)
+        
 
         try:
             data = FileHandler.process_file(full_path)
@@ -229,6 +214,8 @@ def send_vendor_emails(request: HttpRequest) -> HttpResponse:
     try:
         vendor_data = request.session.get('vendor_data_dict')
         file_path = request.session.get('uploaded_file_path')
+        processor = TransportDataProcessor(file_path)
+        vendor_json_data = processor.process()
 
         if not vendor_data or not file_path:
             logger.error("Missing vendor data or file path in session")
@@ -238,53 +225,75 @@ def send_vendor_emails(request: HttpRequest) -> HttpResponse:
             logger.error(f"Attachment file not found: {file_path}")
             return JsonResponse({"error": "Attachment file not found"}, status=400)
 
-        route_groups = {}
+        # route_groups = {}
         # Group vendors by route number
-        for row in vendor_data:
-            route_no = row.get('Route No')
-            if route_no:
-                if route_no not in route_groups:
-                    route_groups[route_no] = []
-                route_groups[route_no].append(row)
+        # for row in vendor_data:
+        #     route_no = row.get('Route No')
+        #     if route_no:
+        #         if route_no not in route_groups:
+        #             route_groups[route_no] = []
+        #         route_groups[route_no].append(row)
 
         email_service = EmailService()
         success_count = 0
         failed_emails = []
         processed_emails = set()  # Track processed emails to avoid duplicates
 
-        for route_no, route_data in route_groups.items():
-            logger.info(f"Processing route: {route_no}")
+        for vendor_name, vendor_data in vendor_json_data.items():
+            logger.info(f"Processing route: {vendor_name}")
             
-            # Get unique valid emails for this route
-            emails = {
-                row.get('Vendor Email') for row in route_data 
-                if isinstance(row.get('Vendor Email'), str) 
-                and '@' in row.get('Vendor Email')
-                and row.get('Vendor Email').lower() != 'vendor email'
-            }
-            
-            if not emails:
-                logger.warning(f"No valid emails found for route {route_no}")
-                continue
+            for route_no, route_data in vendor_data.items():
+                vendor_email = route_data[0].get('Vendor Email', '')
+                break
 
-            subject = f'Route {route_no} - Vehicle Details'
+
+            subject = f'Route {vendor_name} - Vehicle Details'
             try:
-                body = email_service.format_route_email_body(route_data)
+                body = email_service.format_route_email_body(vendor_name)
+                df = pd.DataFrame()
                 
-                for email in emails:
-                    if email in processed_emails:
-                        logger.info(f"Skipping duplicate email: {email}")
-                        continue
+                
+                df_dict = {
+                    key: pd.DataFrame(value) for key, value in vendor_data.items()
                         
-                    processed_emails.add(email)
-                    try:
-                        if email_service.send_email(email, subject, body, file_path):
-                            success_count += 1
-                        else:
-                            failed_emails.append(email)
-                    except EmailServiceError as e:
-                        logger.error(f"Failed to send email to {email}: {str(e)}")
-                        failed_emails.append(email)
+                }
+                final_df = pd.concat(df_dict.values(), ignore_index=True)
+                
+                final_df = final_df[['S No',   'Route No',   'Emp Code','Name','SUV','Shift','Vendor Name',   'Area','Location-Delhi'    ,'Pickup Time','Address (Office Reporting Time 07:20 Hrs & Departure Time 16:45 Hrs)','Vendor Email','Gender']]
+
+
+                vendor_media_path = os.path.join(settings.MEDIA_ROOT, "vendor")
+                vendor_file_name = os.path.join(vendor_media_path, f'{vendor_name}_vendor_route.xlsx')
+                final_df.to_excel(vendor_file_name, index=False)
+                                
+                email_service.send_email(vendor_email, subject, body, vendor_file_name, vendor_data, vendor_name)
+                
+                for filename in os.listdir(vendor_media_path):
+                    if filename.lower().endswith((".png", ".jpg", ".jpeg")) and vendor_name.lower().replace(" ", "_") in filename.lower():
+                        file_path = os.path.join(vendor_media_path, filename)
+                        os.remove(file_path)
+                        print(f"Removed: {file_path}")
+                
+                os.remove(vendor_file_name)
+
+                            
+                
+                
+                
+                # for email in emails:
+                #     if email in processed_emails:
+                #         logger.info(f"Skipping duplicate email: {email}")
+                #         continue
+                        
+                    # processed_emails.add(email)
+                    # try:
+                    #     if email_service.send_email(email, subject, body, file_path):
+                    #         success_count += 1
+                    #     else:
+                    #         failed_emails.append(email)
+                    # except EmailServiceError as e:
+                    #     logger.error(f"Failed to send email to {email}: {str(e)}")
+                    #     failed_emails.append(email)
                         
             except Exception as e:
                 logger.error(f"Error processing route {route_no}: {str(e)}")
@@ -294,7 +303,7 @@ def send_vendor_emails(request: HttpRequest) -> HttpResponse:
             "message": "Email processing completed",
             "success_count": success_count,
             "failed_count": len(failed_emails),
-            "total_routes": len(route_groups),
+            # "total_routes": len(route_groups),
             "total_unique_emails": len(processed_emails)
         }
 
