@@ -138,67 +138,6 @@
                         <p>Sending email...</p>
                     </div>
 
-                    <!-- JavaScript to handle form submission and modal closing -->
-                    <!-- <script>
-                        document.getElementById("confirmSendEmail").addEventListener("click", function () {
-                            let sendButton = this;
-                            let loader = document.getElementById("emailLoader");
-                            let modalBody = document.getElementById("modalBody");
-
-                            // Clear modal content and show loader
-                            modalBody.innerHTML = '';
-                            modalBody.appendChild(loader);
-                            loader.classList.remove("d-none");
-                            sendButton.disabled = true;
-
-                            console.log("Send Email button clicked");
-
-                            fetch("{% url 'send_employee_emails' %}", {
-                                method: "POST",
-                                headers: {
-                                    "X-CSRFToken": "{{ csrf_token }}",
-                                    "Content-Type": "application/json"
-                                },
-                                body: JSON.stringify({})
-                            })
-                                .then(response => {
-                                    if (!response.ok) {
-                                        throw new Error("Network response was not ok");
-                                    }
-                                    return response.json();
-                                })
-                                .then(data => {
-                                    console.log("Email sent successfully:", data);
-
-                                    // Show success message and hide loader
-                                    loader.classList.add("d-none");
-                                    modalBody.innerHTML = '<p class="text-success">Email sent successfully!</p>';
-
-                                    // Close modal after a delay
-                                    setTimeout(() => {
-                                        let modalElement = document.getElementById("confirmModal");
-                                        let modalInstance = bootstrap.Modal.getInstance(modalElement) || new bootstrap.Modal(modalElement);
-                                        modalInstance.hide();
-
-                                        // Remove modal backdrop
-                                        document.body.classList.remove("modal-open");
-                                        document.querySelector(".modal-backdrop")?.remove();
-                                    }, 1500);
-                                })
-                                .catch(error => {
-                                    console.error("Error sending email:", error);
-                                    alert("An error occurred while sending the email. Please check the console for details.");
-
-                                    // Restore modal content on error
-                                    loader.classList.add("d-none");
-                                    modalBody.innerHTML = '<p class="text-danger">Failed to send email. Please try again.</p>';
-                                })
-                                .finally(() => {
-                                    sendButton.disabled = false;
-                                });
-                        });
-                    </script> -->
-
 
                     <!-- Send Whatapp to Employees Button -->
                     <form method="POST" action="#">
@@ -219,10 +158,11 @@
             <div class="tab-pane fade" id="vendor-section">
                 <div class="form-section">
                     <h3 class="mb-4">Vendor Information</h3>
-                    <form id="vendorForm" action="" method="POST" enctype="multipart/form-data">
+                    <form id="vendorForm" action="{% url 'handle_vendor_form' %}" method="POST"
+                        enctype="multipart/form-data">
                         {% csrf_token %}
                         <div class="mb-3">
-                            <label for="vendorFileUpload" class="form-label">Upload Roaster file</label>
+                            <label for="vendorFileUpload" class="form-label">Upload Vendor Data</label>
                             <input type="file" class="form-control" id="vendorFileUpload" name="vendor_file"
                                 accept=".xlsx, .xls, .csv">
                             <div class="form-text">Supported format: .csv</div>
@@ -232,6 +172,162 @@
                         </button>
                     </form>
                 </div>
+
+                {% if messages %}
+                <div class="messages">
+                    {% for message in messages %}
+                    <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                {% if vendor_data_dict %}
+                <div class="data-table-container">
+                    <h3 class="mb-3">Uploaded Vendor Data</h3>
+                    <div class="search-container-wrapper">
+                        <div class="search-container">
+                            <i class="bi bi-search search-icon"></i>
+                            <input type="text" class="search-box" id="vendorTableSearch"
+                                placeholder="Search in table...">
+                        </div>
+                    </div>
+                    <div class="scrollable-table">
+                        <table class="table table-hover" id="dataTable">
+                            <thead>
+                                <tr>
+                                    {% for key in vendor_data_dict.0.keys %}
+                                    <th style="background-color: rgb(253, 253, 255); width: 250px; ">{{ key }}</th>
+                                    {% endfor %}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in vendor_data_dict %}
+                                <tr>
+                                    {% for value in row.values %}
+                                    <td>{{ value }}</td>
+                                    {% endfor %}
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-center gap-3">
+                    <!-- Send Email to Vendors Button -->
+                    <button type="button" class="btn btn-dark" data-bs-toggle="modal"
+                        data-bs-target="#vendorConfirmModal">
+                        <i class="bi bi-envelope me-2"></i>Send Email to Vendors
+                    </button>
+
+                    <!-- Confirmation Modal for Vendors -->
+                    <div class="modal fade" id="vendorConfirmModal" tabindex="-1"
+                        aria-labelledby="vendorConfirmModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-dialog-centered">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title" id="vendorConfirmModalLabel">Confirm Email Sending</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"
+                                        aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body" id="vendorModalBody">
+                                    <!-- Initial Confirmation Message -->
+                                    Are you sure you want to send emails to vendors?
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">No</button>
+                                    <button type="button" class="btn btn-primary" id="confirmSendVendorEmail">Yes, Send
+                                        Email</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Loader for Vendors (Initially Hidden) -->
+                    <div id="vendorEmailLoader" class="d-none text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Sending...</span>
+                        </div>
+                        <p>Sending email...</p>
+                    </div>
+
+                    <!-- JavaScript to handle form submission and modal closing for Vendors -->
+                    <script>
+                        document.getElementById("confirmSendVendorEmail").addEventListener("click", function () {
+                            let sendButton = this;
+                            let loader = document.getElementById("vendorEmailLoader");
+                            let modalBody = document.getElementById("vendorModalBody");
+
+                            // Clear modal content and show loader
+                            modalBody.innerHTML = '';
+                            modalBody.appendChild(loader);
+                            loader.classList.remove("d-none");
+                            sendButton.disabled = true;
+
+                            console.log("Send Email button clicked for Vendors");
+
+                            fetch("{% url 'send_vendor_emails' %}", {
+                                method: "POST",
+                                headers: {
+                                    "X-CSRFToken": "{{ csrf_token }}",
+                                    "Content-Type": "application/json"
+                                },
+                                body: JSON.stringify({})
+                            })
+                                .then(response => {
+                                    if (!response.ok) {
+                                        throw new Error("Network response was not ok");
+                                    }
+                                    return response.json();
+                                })
+                                .then(data => {
+                                    console.log("Email sent successfully to Vendors:", data);
+
+                                    // Show success message and hide loader
+                                    loader.classList.add("d-none");
+                                    modalBody.innerHTML = '<p class="text-success">Email sent successfully!</p>';
+
+                                    // Close modal after a delay
+                                    setTimeout(() => {
+                                        let modalElement = document.getElementById("vendorConfirmModal");
+                                        let modalInstance = bootstrap.Modal.getInstance(modalElement) || new bootstrap.Modal(modalElement);
+                                        modalInstance.hide();
+
+                                        // Remove modal backdrop
+                                        document.body.classList.remove("modal-open");
+                                        document.querySelector(".modal-backdrop")?.remove();
+                                    }, 1500);
+                                })
+                                .catch(error => {
+                                    console.error("Error sending email to Vendors:", error);
+                                    alert("An error occurred while sending the email. Please check the console for details.");
+
+                                    // Restore modal content on error
+                                    loader.classList.add("d-none");
+                                    modalBody.innerHTML = '<p class="text-danger">Failed to send email. Please try again.</p>';
+                                })
+                                .finally(() => {
+                                    sendButton.disabled = false;
+                                });
+                        });
+                    </script>
+
+                    <!-- Send WhatsApp to Vendors Button -->
+                    <form method="POST" action="#">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-success">
+                            <i class="bi bi-whatsapp me-2"></i>Send WhatsApp to Vendors
+                        </button>
+                    </form>
+                </div>
+                {% else %}
+                <div class="alert alert-info" role="alert">
+                    <i class="bi bi-info-circle me-2"></i>No data found. Please upload a valid file.
+                </div>
+                {% endif %}
             </div>
         </div>
     </div>

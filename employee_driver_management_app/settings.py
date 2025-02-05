@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'mainapp',
     'employee_management',
+    'vendor_management',
     
 ]
 
