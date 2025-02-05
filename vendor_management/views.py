@@ -17,44 +17,72 @@ from dotenv import load_dotenv
 
 from .transport_image import TransportDataProcessor
 
-# Configure logging
+# Initialize logging and environment variables
 logger = logging.getLogger(__name__)
-
 load_dotenv()
 
 class Config:
-    MAX_FILE_SIZE = 25 * 1024 * 1024
+    """Configuration settings for the application"""
+    # File handling configurations
+    MAX_FILE_SIZE = 25 * 1024 * 1024  # 25MB
     ALLOWED_EXTENSIONS = {'xlsx', 'xls', 'csv'}
     CHUNK_SIZE = 10000
     MAX_COLUMNS = 29
+    
+    # Email configurations
     EMAIL_HOST = 'smtp.gmail.com'
     EMAIL_PORT = 587
     EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
     EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
+    
+    # Processing configurations
     MAX_WORKERS = 5
+    
+    # Required columns for vendor data
+    REQUIRED_COLUMNS = [
+        'S No', 'Route No', 'Emp Code', 'Name', 'SUV', 'Shift',
+        'Vendor Name', 'Area', 'Location-Delhi', 'Pickup Time',
+        'Address (Office Reporting Time 07:20 Hrs & Departure Time 16:45 Hrs)',
+        'Vendor Email', 'Gender'
+    ]
 
 class FileHandlerError(Exception):
-    """Custom exception for file handling errors"""
+    """Custom exception for file handling related errors"""
     pass
 
 class EmailServiceError(Exception):
-    """Custom exception for email service errors"""
+    """Custom exception for email service related errors"""
     pass
 
 class FileHandler:
+    """Handles all file-related operations including validation and processing"""
+    
     @staticmethod
     def validate_file(file) -> Tuple[bool, str]:
+        """
+        Validates uploaded file against size and type constraints
+        
+        Args:
+            file: The uploaded file object
+            
+        Returns:
+            Tuple[bool, str]: (is_valid, error_message)
+        """
         logger.info(f"Validating file: {getattr(file, 'name', 'No file')}")
+        
         try:
             if not file:
                 raise FileHandlerError("No file uploaded")
             
             extension = file.name.split('.')[-1].lower()
             if extension not in Config.ALLOWED_EXTENSIONS:
-                raise FileHandlerError(f"Invalid file type. Allowed types: {', '.join(Config.ALLOWED_EXTENSIONS)}")
+                raise FileHandlerError(
+                    f"Invalid file type. Allowed types: {', '.join(Config.ALLOWED_EXTENSIONS)}"
+                )
             
             if file.size > Config.MAX_FILE_SIZE:
-                raise FileHandlerError(f"File size exceeds {Config.MAX_FILE_SIZE // (1024*1024)}MB limit")
+                max_size_mb = Config.MAX_FILE_SIZE // (1024 * 1024)
+                raise FileHandlerError(f"File size exceeds {max_size_mb}MB limit")
                 
             return True, ""
 
@@ -67,8 +95,19 @@ class FileHandler:
 
     @staticmethod
     def process_file(file_path: str) -> Optional[pd.DataFrame]:
+        """
+        Processes the uploaded file and returns a DataFrame
+        
+        Args:
+            file_path: Path to the uploaded file
+            
+        Returns:
+            Optional[pd.DataFrame]: Processed DataFrame or None if processing fails
+        """
         logger.info(f"Processing file: {file_path}")
+        
         try:
+            # Read file based on extension
             if file_path.endswith('.csv'):
                 chunks = pd.read_csv(file_path, chunksize=Config.CHUNK_SIZE, encoding='utf-8')
                 data = pd.concat(chunks, ignore_index=True)
@@ -77,6 +116,11 @@ class FileHandler:
             
             if data.empty:
                 raise FileHandlerError("File contains no data")
+            
+            # Validate required columns
+            missing_columns = set(Config.REQUIRED_COLUMNS) - set(data.columns)
+            if missing_columns:
+                raise FileHandlerError(f"Missing required columns: {', '.join(missing_columns)}")
                 
             return data.iloc[:, :Config.MAX_COLUMNS].fillna("N/A")
 
@@ -85,84 +129,118 @@ class FileHandler:
             raise FileHandlerError(f"Error processing file: {str(e)}")
 
 class EmailService:
+    """Handles email composition and sending operations"""
+    
     def __init__(self):
+        """Initialize email service with credentials"""
         self.sender_email = Config.EMAIL_HOST_USER
         self.sender_password = Config.EMAIL_HOST_PASSWORD
+        
         if not self.sender_email or not self.sender_password:
             raise EmailServiceError("Email credentials not properly configured")
 
     @staticmethod
-    def format_route_email_body(route_data: str) -> str:        
-        body = f"""
+    def format_route_email_body(route_data: str) -> str:
+        """
+        Formats the email body with route information
+        
+        Args:
+            route_data: Route information to include in email
+            
+        Returns:
+            str: Formatted email body
+        """
+        return f"""
         Dear {route_data},
         
-        Please find the attached All route Excel File and with Indidual Route Image.
+        Please find attached the All Route Excel File and Individual Route Image.
         
         Best regards,
         Admin Team
-        """       
-        return body
+        """
 
-    def send_email(self, vendor_email: str, subject, body, vendor_file_name, vendor_data, vendor_name) -> bool:
+    def send_email(self, vendor_email: str, subject: str, body: str, 
+                  vendor_file_name: str, vendor_data: dict, vendor_name: str) -> bool:
+        """
+        Sends email with attachments to vendors
+        
+        Args:
+            vendor_email: Recipient email address
+            subject: Email subject
+            body: Email body
+            vendor_file_name: Path to vendor file attachment
+            vendor_data: Vendor data dictionary
+            vendor_name: Name of the vendor
+            
+        Returns:
+            bool: True if email sent successfully, False otherwise
+        """
         if '@' not in vendor_email:
-            logger.warning(f"Invalid email: {vendor_email}")
+            logger.warning(f"Invalid email address: {vendor_email}")
             return False
 
         try:
+            # Create email message
             msg = MIMEMultipart()
             msg['Subject'] = subject
             msg['From'] = self.sender_email
             msg['To'] = vendor_email
             
-            # Attach the XLSX file
-            media_directory = settings.MEDIA_ROOT
-            # xlsx_filename = os.path.join(media_directory, [filename for filename in os.listdir(media_directory) if filename.lower().endswith((".csv", ".xlsx"))][0])
-
-            with open(vendor_file_name, "rb") as xlsx_file:
-                part = MIMEBase("application", "octet-stream")
-                part.set_payload(xlsx_file.read())
-                encoders.encode_base64(part)
-                part.add_header(
-                    "Content-Disposition",
-                    f"attachment; filename={vendor_file_name}",
-                )
-                msg.attach(part)
-
-            # Attach the image files
-            vendor_directory_path = os.path.dirname(vendor_file_name)
-            image_filenames = [os.path.join(vendor_directory_path, filename) for filename in os.listdir(vendor_directory_path) if filename.lower().endswith((".png", ".jpg", ".jpeg")) and vendor_name.lower().replace(" ", "_") in filename.lower()]
-            for image_filename in image_filenames:
-                with open(image_filename, "rb") as image_file:
-                    part = MIMEBase("application", "octet-stream")
-                    part.set_payload(image_file.read())
-                    encoders.encode_base64(part)
-                    part.add_header(
-                        "Content-Disposition",
-                        f"attachment; filename={image_filename}",
-                    )
-                    msg.attach(part)
-
+            # Attach Excel file
+            self._attach_file(msg, vendor_file_name)
             
-            html_part = MIMEText(body)
-            msg.attach(html_part)
-            msg.attach(part)
-
+            # Attach related images
+            self._attach_vendor_images(msg, vendor_file_name, vendor_name)
+            
+            # Add email body
+            msg.attach(MIMEText(body))
+            
+            # Send email
             with smtplib.SMTP(Config.EMAIL_HOST, Config.EMAIL_PORT) as server:
                 server.starttls()
                 server.login(self.sender_email, self.sender_password)
                 server.send_message(msg)
             
-            logger.info(f"Email sent to {vendor_email}")
+            logger.info(f"Email sent successfully to {vendor_email}")
             return True
 
         except Exception as e:
-            logger.error(f"Email failed to {vendor_email}: {str(e)}")
+            logger.error(f"Failed to send email to {vendor_email}: {str(e)}")
             return False
 
+    def _attach_file(self, msg: MIMEMultipart, file_path: str) -> None:
+        """Helper method to attach files to email"""
+        with open(file_path, "rb") as f:
+            part = MIMEBase("application", "octet-stream")
+            part.set_payload(f.read())
+            encoders.encode_base64(part)
+            part.add_header(
+                "Content-Disposition",
+                f"attachment; filename={os.path.basename(file_path)}",
+            )
+            msg.attach(part)
 
-
+    def _attach_vendor_images(self, msg: MIMEMultipart, vendor_file_name: str, 
+                            vendor_name: str) -> None:
+        """Helper method to attach vendor-specific images to email"""
+        vendor_directory_path = os.path.dirname(vendor_file_name)
+        image_pattern = vendor_name.lower().replace(" ", "_")
+        
+        for filename in os.listdir(vendor_directory_path):
+            if (filename.lower().endswith((".png", ".jpg", ".jpeg")) and 
+                image_pattern in filename.lower()):
+                self._attach_file(msg, os.path.join(vendor_directory_path, filename))
 
 def handle_vendor_form(request: HttpRequest) -> HttpResponse:
+    """
+    Handles the vendor form submission and file processing
+    
+    Args:
+        request: HTTP request object
+        
+    Returns:
+        HttpResponse: Rendered template with processing results
+    """
     if request.method != 'POST':
         return render(request, 'front/index.html', 
                      {'vendor_data_dict': request.session.get('vendor_data_dict')})
@@ -175,19 +253,23 @@ def handle_vendor_form(request: HttpRequest) -> HttpResponse:
             messages.error(request, error_message)
             return redirect('handle_vendor_form')
         
+        # Create vendor media directory if it doesn't exist
         vendor_media_path = os.path.join(settings.MEDIA_ROOT, "vendor")
-        if not os.path.exists(vendor_media_path):
-            os.makedirs(vendor_media_path)
+        os.makedirs(vendor_media_path, exist_ok=True)
+        
+        # Save and process file
         fs = FileSystemStorage(location=vendor_media_path)
         file_path = fs.save(uploaded_file.name, uploaded_file)
         full_path = fs.path(file_path)
-        
 
         try:
             data = FileHandler.process_file(full_path)
             vendor_data_dict = data.to_dict(orient='records')
+            
+            # Store processed data in session
             request.session['vendor_data_dict'] = vendor_data_dict
             request.session['uploaded_file_path'] = full_path
+            
             messages.success(request, 'File processed successfully!')
 
         except FileHandlerError as e:
@@ -203,20 +285,24 @@ def handle_vendor_form(request: HttpRequest) -> HttpResponse:
     return render(request, 'front/index.html', 
                  {'vendor_data_dict': request.session.get('vendor_data_dict')})
 
-
-
-
 def send_vendor_emails(request: HttpRequest) -> HttpResponse:
-    """Updated send_vendor_emails function with better error handling"""
+    """
+    Processes vendor data and sends emails to vendors
+    
+    Args:
+        request: HTTP request object
+        
+    Returns:
+        JsonResponse: Processing results and status
+    """
     if request.method != 'POST':
         return JsonResponse({"error": "Invalid method"}, status=400)
 
     try:
+        # Get vendor data and file path from session
         vendor_data = request.session.get('vendor_data_dict')
         file_path = request.session.get('uploaded_file_path')
-        processor = TransportDataProcessor(file_path)
-        vendor_json_data = processor.process()
-
+        
         if not vendor_data or not file_path:
             logger.error("Missing vendor data or file path in session")
             return JsonResponse({"error": "No data or file found"}, status=400)
@@ -225,92 +311,69 @@ def send_vendor_emails(request: HttpRequest) -> HttpResponse:
             logger.error(f"Attachment file not found: {file_path}")
             return JsonResponse({"error": "Attachment file not found"}, status=400)
 
-        # route_groups = {}
-        # Group vendors by route number
-        # for row in vendor_data:
-        #     route_no = row.get('Route No')
-        #     if route_no:
-        #         if route_no not in route_groups:
-        #             route_groups[route_no] = []
-        #         route_groups[route_no].append(row)
-
+        # Process vendor data
+        processor = TransportDataProcessor(file_path)
+        vendor_json_data = processor.process()
+        
+        # Initialize email service
         email_service = EmailService()
         success_count = 0
         failed_emails = []
-        processed_emails = set()  # Track processed emails to avoid duplicates
+        processed_emails = set()
+
+        vendor_media_path = os.path.join(settings.MEDIA_ROOT, "vendor")
 
         for vendor_name, vendor_data in vendor_json_data.items():
-            logger.info(f"Processing route: {vendor_name}")
+            logger.info(f"Processing vendor: {vendor_name}")
             
+            # Get vendor email from first route
             for route_no, route_data in vendor_data.items():
                 vendor_email = route_data[0].get('Vendor Email', '')
                 break
 
-
-            subject = f'Route {vendor_name} - Vehicle Details'
-            try:
-                body = email_service.format_route_email_body(vendor_name)
-                df = pd.DataFrame()
-                
-                
-                df_dict = {
-                    key: pd.DataFrame(value) for key, value in vendor_data.items()
-                        
-                }
-                final_df = pd.concat(df_dict.values(), ignore_index=True)
-                
-                final_df = final_df[['S No',   'Route No',   'Emp Code','Name','SUV','Shift','Vendor Name',   'Area','Location-Delhi'    ,'Pickup Time','Address (Office Reporting Time 07:20 Hrs & Departure Time 16:45 Hrs)','Vendor Email','Gender']]
-
-
-                vendor_media_path = os.path.join(settings.MEDIA_ROOT, "vendor")
-                vendor_file_name = os.path.join(vendor_media_path, f'{vendor_name}_vendor_route.xlsx')
-                final_df.to_excel(vendor_file_name, index=False)
-                                
-                email_service.send_email(vendor_email, subject, body, vendor_file_name, vendor_data, vendor_name)
-                
-                for filename in os.listdir(vendor_media_path):
-                    if filename.lower().endswith((".png", ".jpg", ".jpeg")) and vendor_name.lower().replace(" ", "_") in filename.lower():
-                        file_path = os.path.join(vendor_media_path, filename)
-                        os.remove(file_path)
-                        print(f"Removed: {file_path}")
-                
-                os.remove(vendor_file_name)
-
-                            
-                
-                
-                
-                # for email in emails:
-                #     if email in processed_emails:
-                #         logger.info(f"Skipping duplicate email: {email}")
-                #         continue
-                        
-                    # processed_emails.add(email)
-                    # try:
-                    #     if email_service.send_email(email, subject, body, file_path):
-                    #         success_count += 1
-                    #     else:
-                    #         failed_emails.append(email)
-                    # except EmailServiceError as e:
-                    #     logger.error(f"Failed to send email to {email}: {str(e)}")
-                    #     failed_emails.append(email)
-                        
-            except Exception as e:
-                logger.error(f"Error processing route {route_no}: {str(e)}")
+            if vendor_email in processed_emails:
                 continue
 
-        response_data = {
+            processed_emails.add(vendor_email)
+            
+            try:
+                # Prepare email content
+                subject = f'Route {vendor_name} - Vehicle Details'
+                body = email_service.format_route_email_body(vendor_name)
+                
+                # Create vendor-specific Excel file
+                df_dict = {
+                    key: pd.DataFrame(value) for key, value in vendor_data.items()
+                }
+                final_df = pd.concat(df_dict.values(), ignore_index=True)
+                final_df = final_df[Config.REQUIRED_COLUMNS]
+
+                vendor_file_name = os.path.join(vendor_media_path, 
+                                                f'{vendor_name}_vendor_route.xlsx')
+                final_df.to_excel(vendor_file_name, index=False)
+                
+                # Send email
+                if email_service.send_email(vendor_email, subject, body, 
+                                          vendor_file_name, vendor_data, vendor_name):
+                    success_count += 1
+                else:
+                    failed_emails.append(vendor_email)
+
+                # Cleanup temporary files
+                cleanup_vendor_files(vendor_media_path, vendor_name, vendor_file_name)
+
+            except Exception as e:
+                logger.error(f"Error processing vendor {vendor_name}: {str(e)}")
+                failed_emails.append(vendor_email)
+                continue
+
+        return JsonResponse({
             "message": "Email processing completed",
             "success_count": success_count,
             "failed_count": len(failed_emails),
-            # "total_routes": len(route_groups),
-            "total_unique_emails": len(processed_emails)
-        }
-
-        if failed_emails:
-            response_data["failed_emails"] = failed_emails
-            
-        return JsonResponse(response_data)
+            "total_unique_emails": len(processed_emails),
+            "failed_emails": failed_emails if failed_emails else None
+        })
 
     except Exception as e:
         logger.error(f"Unexpected error in send_vendor_emails: {str(e)}", exc_info=True)
@@ -318,3 +381,24 @@ def send_vendor_emails(request: HttpRequest) -> HttpResponse:
             "error": "An unexpected error occurred while sending emails",
             "details": str(e)
         }, status=500)
+
+def cleanup_vendor_files(vendor_media_path: str, vendor_name: str, vendor_file_name: str)-> None:
+    """
+    Cleans up temporary vendor files after email processing
+    
+    Args:
+        vendor_media_path: Path to vendor media directory
+        vendor_name: Name of the vendor
+        vendor_file_name: Path to vendor Excel file
+    """
+    # Remove generated images
+    for filename in os.listdir(vendor_media_path):
+        if (filename.lower().endswith((".png", ".jpg", ".jpeg")) and 
+            vendor_name.lower().replace(" ", "_") in filename.lower()):
+            file_path = os.path.join(vendor_media_path, filename)
+            os.remove(file_path)
+            logger.debug(f"Removed temporary image: {file_path}")
+    
+    # Remove generated Excel file
+    os.remove(vendor_file_name)
+    logger.debug(f"Removed temporary Excel file: {vendor_file_name}")
