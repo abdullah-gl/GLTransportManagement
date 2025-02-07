@@ -61,7 +61,72 @@ class EmailService:
     def __init__(self):
         self.sender_email = Config.EMAIL_HOST_USER
         self.sender_password = Config.EMAIL_HOST_PASSWORD
+    
+    @staticmethod
+    def format_email_body(employee_data: Dict) -> str:
+        """Format employee details into email body (HTML format)."""
+        return f"""
+        <html>
+            <head>
+                <style>
+                    body {{
+                        font-family: Arial, sans-serif;
+                        color: #333;
+                    }}
+                    .container {{
+                        text-align: center; /* Centers the image */
+                        margin: 20px 0;
+                    }}
+                    img {{
+                        width: 100%;
+                        max-width: 600px;
+                        display: block;
+                        margin: 0 auto; /* Ensures the image stays centered */
+                    }}
+                    p, ul, ol {{
+                        font-size: 16px;
+                        line-height: 1.5;
+                    }}
+                    ul, ol {{
+                        margin-left: 20px;
+                    }}
+                    a {{
+                        color: #1a73e8;
+                        text-decoration: none;
+                    }}
+                    a:hover {{
+                        text-decoration: underline;
+                    }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <img src="cid:banner" alt="Banner Image">
+                </div>
+                <p>Dear {employee_data.get('Name', 'Employee')},</p>
+                <p>We are pleased to share your updated transportation details:</p>
+                <ul>
+                    <li>Employee Code: {employee_data.get('Emp Code', 'N/A')}</li>
+                    <li>Area: {employee_data.get('Area', 'N/A')}</li>
+                    <li>Location: {employee_data.get('Location-Delhi', 'N/A')}</li>
+                    <li>Pickup Time: {employee_data.get('Pickup Time', 'N/A')}</li>
+                    <li>Driver Contact Number: {employee_data.get('Contact No.', 'N/A')}</li>
+                    <li>Process: {employee_data.get('Process', 'N/A')}</li>
+                </ul>
+                <p><strong>Note:</strong></p>
+                <ol>
+                    <li>Please remember your route number.</li>
+                    <li>Please board the cab as per scheduled pick-up time to avoid any inconvenience.</li>
+                    <li>For any query call on transport helpline number (9266903058) or mail on gl-transport@globallogic.com.</li>
+                    <li>Use this <a href="https://drive.google.com/file/d/1_zHCfyZ4D4S__gjHnq6LtlzbmjAR35RS/view">link</a> for transport policy.</li>
+                </ol>
+                <p>Please ensure you are available at the designated pickup location on time. If you have any questions or need further assistance, feel free to reach out.</p>
+                <p>Best regards,<br>Your Admin Team</p>
+            </body>
+        </html>
+        """
 
+    '''
     @staticmethod
     def format_email_body(employee_data: Dict) -> str:
         """Format employee details into email body (HTML format)."""
@@ -69,12 +134,12 @@ class EmailService:
             f"<p>Dear {employee_data.get('Name', 'Employee')},</p>"
             "<p>We are pleased to share your updated transportation details:</p>"
             "<ul>"
-            f"<li>🔹 Employee Code: {employee_data.get('Emp Code', 'N/A')}</li>"
-            f"<li>🔹 Area: {employee_data.get('Area', 'N/A')}</li>"
-            f"<li>🔹 Location: {employee_data.get('Location-Delhi', 'N/A')}</li>"
-            f"<li>🔹 Pickup Time: {employee_data.get('Pickup Time', 'N/A')}</li>"
-            f"<li>🔹 Contact Number: {employee_data.get('Contact No.', 'N/A')}</li>"
-            f"<li>🔹 Process: {employee_data.get('Process', 'N/A')}</li>"
+            f"<li> Employee Code: {employee_data.get('Emp Code', 'N/A')}</li>"
+            f"<li> Area: {employee_data.get('Area', 'N/A')}</li>"
+            f"<li> Location: {employee_data.get('Location-Delhi', 'N/A')}</li>"
+            f"<li> Pickup Time: {employee_data.get('Pickup Time', 'N/A')}</li>"
+            f"<li> Driver Contact Number: {employee_data.get('Contact No.', 'N/A')}</li>"
+            f"<li> Process: {employee_data.get('Process', 'N/A')}</li>"
             "</ul>"
             "<p><strong>Note:</strong></p>"
             "<ol>"
@@ -88,6 +153,11 @@ class EmailService:
             "<p>Best regards,<br>Your Admin Team</p>"
         )
 
+    
+    '''
+    
+    
+    
     """Send email using SMTP with error handling."""
     def send_email(self, to_email: str, subject: str, body: str) -> bool:
         if '@' not in to_email:
@@ -113,8 +183,8 @@ class EmailService:
             logger.error(f"Failed to send email to {to_email}: {str(e)}")
             return False
 
+"""Handle file upload and process employee data."""
 def handle_employee_form(request: HttpRequest) -> HttpResponse:
-    """Handle file upload and process employee data."""
     if request.method != 'POST':
         return render(request, 'front/index.html', 
                      {'data_dict': request.session.get('data_dict')})
@@ -126,11 +196,6 @@ def handle_employee_form(request: HttpRequest) -> HttpResponse:
         if not is_valid:
             messages.error(request, error_message)
             return redirect('handle_employee_form')
-        
-        
-        # fs = FileSystemStorage(location=settings.MEDIA_ROOT)
-        # file_path = fs.save(uploaded_file.name, uploaded_file)
-        # full_path = fs.path(file_path)
         
         employee_media_path = os.path.join(settings.MEDIA_ROOT, "employee")
         if not os.path.exists(employee_media_path):
@@ -162,8 +227,8 @@ def handle_employee_form(request: HttpRequest) -> HttpResponse:
     return render(request, 'front/index.html', 
                  {'data_dict': request.session.get('data_dict')})
 
-"""Send emails to employees using parallel processing."""
 
+"""Send emails to employees using parallel processing."""
 def send_employee_emails(request: HttpRequest) -> HttpResponse:
     if request.method != 'POST':
         return JsonResponse({"error": "Invalid request method"}, status=400)

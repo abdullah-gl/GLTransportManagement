@@ -4,7 +4,7 @@ __pycache__/
 *$py.class
 *.csv
 *.xlsx
-
+*.zip
 # C extensions
 *.so
 

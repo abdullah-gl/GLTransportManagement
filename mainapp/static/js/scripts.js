@@ -187,3 +187,31 @@ function closeModal() {
     document.body.classList.remove("modal-open");
     document.querySelector(".modal-backdrop")?.remove();
 }
+
+
+
+
+
+
+
+
+
+
+// document.addEventListener('DOMContentLoaded', function () {
+//     // Check the URL hash or any condition to determine the active tab
+//     const hash = window.location.hash;
+
+//     if (hash === '#employee-section') {
+//         // Activate the Employee tab
+//         const employeeTab = new bootstrap.Tab(document.getElementById('employee-tab'));
+//         employeeTab.show();
+//     } else if (hash === '#vendor-section') {
+//         // Activate the Vendor tab
+//         const vendorTab = new bootstrap.Tab(document.getElementById('vendor-tab'));
+//         vendorTab.show();
+//     } else {
+//         // Default to Employee tab if no hash is present
+//         const defaultTab = new bootstrap.Tab(document.getElementById('employee-tab'));
+//         defaultTab.show();
+//     }
+// });

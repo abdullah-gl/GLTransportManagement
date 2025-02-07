@@ -6,15 +6,15 @@ from django.contrib import messages
 from django.shortcuts import render, redirect
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse, JsonResponse
-import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from email.mime.application import MIMEApplication
-from email import encoders
 from email.mime.base import MIMEBase
+from email.mime.image import MIMEImage
+from email import encoders
+import mimetypes
+import smtplib
 import os
 from dotenv import load_dotenv
-
 from .transport_image import TransportDataProcessor
 
 # Initialize logging and environment variables
@@ -138,6 +138,14 @@ class EmailService:
         
         if not self.sender_email or not self.sender_password:
             raise EmailServiceError("Email credentials not properly configured")
+    
+    @staticmethod
+    def attach_banner_image(msg, img_path):
+        with open(img_path, "rb") as img_file:
+            img = MIMEImage(img_file.read(), _subtype=mimetypes.guess_type(img_path)[0].split('/')[1])
+            img.add_header("Content-ID", "<banner>")
+            img.add_header("Content-Disposition", "inline", filename=os.path.basename(img_path))
+            msg.attach(img)
 
     @staticmethod
     def format_route_email_body(route_data: str) -> str:
@@ -150,17 +158,48 @@ class EmailService:
         Returns:
             str: Formatted email body
         """
+
         return f"""
-        Dear {route_data},
-        
-        Please find attached the All Route Excel File and Individual Route Image.
-        
-        Best regards,
-        Admin Team
+        <html>
+            <head>
+                <style>
+                    body {{
+                        font-family: Arial, sans-serif;
+                        color: #333;
+                    }}
+                    .container {{
+                        max-width: 600px;
+                        margin: auto;
+                        padding: 20px;
+                        text-align: left; /* Text aligns to the left */
+                    }}
+                    img {{
+                        width: 100%;
+                        max-width: 600px;
+                        display: block;
+                        margin: 0 auto; /* Image stays centered */
+                    }}
+                    p {{
+                        font-size: 16px;
+                        line-height: 1.5;
+                    }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <img src="cid:banner" alt="Banner Image">
+                </div>
+                <p>Dear {route_data},</p>
+                    <p>Please find attached the All Route Excel File and Individual Route Image.</p>
+                    <p>If you have any questions or need further assistance, feel free to reach out.</p>
+                    <p>Best regards,<br><strong>Admin Team</strong></p>
+            </body>
+        </html>
         """
 
+
     def send_email(self, vendor_email: str, subject: str, body: str, 
-                  vendor_file_name: str, vendor_data: dict, vendor_name: str) -> bool:
+                  vendor_file_name: str, vendor_data: dict, vendor_name: str, img_path) -> bool:
         """
         Sends email with attachments to vendors
         
@@ -186,6 +225,9 @@ class EmailService:
             msg['From'] = self.sender_email
             msg['To'] = vendor_email
             
+            
+            self.attach_banner_image(msg, img_path)
+            
             # Attach Excel file
             self._attach_file(msg, vendor_file_name)
             
@@ -193,7 +235,7 @@ class EmailService:
             self._attach_vendor_images(msg, vendor_file_name, vendor_name)
             
             # Add email body
-            msg.attach(MIMEText(body))
+            msg.attach(MIMEText(body, 'html'))
             
             # Send email
             with smtplib.SMTP(Config.EMAIL_HOST, Config.EMAIL_PORT) as server:
@@ -322,6 +364,8 @@ def send_vendor_emails(request: HttpRequest) -> HttpResponse:
         processed_emails = set()
 
         vendor_media_path = os.path.join(settings.MEDIA_ROOT, "vendor")
+        img_path = os.path.join(settings.STATIC_MEDIA_URL, "images" , "header_img.png")
+        logger.info(f"IMAGE PATH: {img_path}")
 
         for vendor_name, vendor_data in vendor_json_data.items():
             logger.info(f"Processing vendor: {vendor_name}")
@@ -354,7 +398,7 @@ def send_vendor_emails(request: HttpRequest) -> HttpResponse:
                 
                 # Send email
                 if email_service.send_email(vendor_email, subject, body, 
-                                          vendor_file_name, vendor_data, vendor_name):
+                                          vendor_file_name, vendor_data, vendor_name, img_path=img_path):
                     success_count += 1
                 else:
                     failed_emails.append(vendor_email)
@@ -382,6 +426,7 @@ def send_vendor_emails(request: HttpRequest) -> HttpResponse:
             "details": str(e)
         }, status=500)
 
+
 def cleanup_vendor_files(vendor_media_path: str, vendor_name: str, vendor_file_name: str)-> None:
     """
     Cleans up temporary vendor files after email processing
@@ -402,3 +447,5 @@ def cleanup_vendor_files(vendor_media_path: str, vendor_name: str, vendor_file_n
     # Remove generated Excel file
     os.remove(vendor_file_name)
     logger.debug(f"Removed temporary Excel file: {vendor_file_name}")
+    
+    
