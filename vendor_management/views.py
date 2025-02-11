@@ -40,7 +40,7 @@ class Config:
     
     # Required columns for vendor data
     REQUIRED_COLUMNS = [
-        'S No', 'Route No', 'Emp Code', 'Name', 'SUV', 'Shift',
+        'S No', 'Route No', 'Name', 'SUV', 'Shift',
         'Vendor Name', 'Area', 'Location-Delhi', 'Pickup Time',
         'Address (Office Reporting Time 07:20 Hrs & Departure Time 16:45 Hrs)',
         'Vendor Email', 'Gender'
@@ -168,16 +168,14 @@ class EmailService:
                         color: #333;
                     }}
                     .container {{
-                        max-width: 600px;
-                        margin: auto;
-                        padding: 20px;
-                        text-align: left; /* Text aligns to the left */
+                        text-align: left; /* Centers the image */
+                        margin: 20px 0;
                     }}
                     img {{
                         width: 100%;
                         max-width: 600px;
                         display: block;
-                        margin: 0 auto; /* Image stays centered */
+                        margin: 0; /* Ensures the image stays centered */
                     }}
                     p {{
                         font-size: 16px;

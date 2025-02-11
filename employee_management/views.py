@@ -4,22 +4,25 @@ from typing import Dict
 from django.core.files.storage import FileSystemStorage
 from django.contrib import messages
 from django.shortcuts import render, redirect
-from django.conf import settings
 from django.http import HttpRequest, HttpResponse
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-import os
-from dotenv import load_dotenv
-from django.http import JsonResponse
 from concurrent.futures import ThreadPoolExecutor
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.image import MIMEImage
+from django.http import JsonResponse
+from django.conf import settings
 from functools import partial
+from dotenv import load_dotenv
+import mimetypes
+import smtplib
+import os
 
 # Configuration
 load_dotenv()
 logger = logging.getLogger(__name__)
 
 class Config:
+    BANNER_IMAGE_PATH = os.path.join(settings.STATIC_MEDIA_URL, "images" , "header_img.png")
     MAX_FILE_SIZE = 25 * 1024 * 1024  # 25MB
     ALLOWED_EXTENSIONS = {'xlsx', 'xls', 'csv'}
     CHUNK_SIZE = 10000
@@ -57,10 +60,21 @@ class FileHandler:
         
         return data.iloc[:, :Config.MAX_COLUMNS].fillna("N/A")
 
+
 class EmailService:
     def __init__(self):
         self.sender_email = Config.EMAIL_HOST_USER
         self.sender_password = Config.EMAIL_HOST_PASSWORD
+        self.img_path = Config.BANNER_IMAGE_PATH
+    
+    @staticmethod
+    def attach_banner_image(msg, img_path):
+        with open(img_path, "rb") as img_file:
+            img = MIMEImage(img_file.read(), _subtype=mimetypes.guess_type(img_path)[0].split('/')[1])
+            img.add_header("Content-ID", "<banner>")
+            img.add_header("Content-Disposition", "inline", filename=os.path.basename(img_path))
+            msg.attach(img)
+    
     
     @staticmethod
     def format_email_body(employee_data: Dict) -> str:
@@ -74,14 +88,14 @@ class EmailService:
                         color: #333;
                     }}
                     .container {{
-                        text-align: center; /* Centers the image */
+                        text-align: left; /* Centers the image */
                         margin: 20px 0;
                     }}
                     img {{
                         width: 100%;
                         max-width: 600px;
                         display: block;
-                        margin: 0 auto; /* Ensures the image stays centered */
+                        margin: 0; /* Ensures the image stays centered */
                     }}
                     p, ul, ol {{
                         font-size: 16px;
@@ -170,6 +184,8 @@ class EmailService:
             msg['To'] = to_email
             msg['Subject'] = subject
             msg.attach(MIMEText(body, 'html'))
+            img_path = self.img_path
+            self.attach_banner_image(msg, img_path)
 
             with smtplib.SMTP(Config.EMAIL_HOST, Config.EMAIL_PORT) as server:
                 server.starttls()

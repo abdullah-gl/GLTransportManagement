@@ -66,7 +66,7 @@ class TransportDataProcessor:
         for vendor, routes in self.route_dict.items():
             for route, users in routes.items():
                 df_users = pd.DataFrame(users)
-                df_users = df_users[['S No',   'Route No',   'Emp Code','Name','SUV','Shift','Vendor Name',   'Area','Location-Delhi'    ,'Pickup Time','Address (Office Reporting Time 07:20 Hrs & Departure Time 16:45 Hrs)','Vendor Email','Gender']]
+                df_users = df_users[['S No',   'Route No','Name','SUV','Shift','Vendor Name',   'Area','Location-Delhi'    ,'Pickup Time','Address (Office Reporting Time 07:20 Hrs & Departure Time 16:45 Hrs)','Vendor Email','Gender']]
                 filename = f"{vendor}_{route}.png".replace(" ", "_").replace("/", "-")
                 save_path = os.path.join(self.output_dir, filename)
                 try:
