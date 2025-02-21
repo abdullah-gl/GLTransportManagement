@@ -17,16 +17,23 @@ import mimetypes
 import smtplib
 import os
 
+
 # Configuration
 load_dotenv()
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('django')
+
+
+
+def home(request):
+    return render(request, 'front/employee_management.html')
+
 
 class Config:
     BANNER_IMAGE_PATH = os.path.join(settings.STATIC_MEDIA_URL, "images" , "header_img.png")
     MAX_FILE_SIZE = 25 * 1024 * 1024  # 25MB
     ALLOWED_EXTENSIONS = {'xlsx', 'xls', 'csv'}
     CHUNK_SIZE = 10000
-    MAX_COLUMNS = 29
+    MAX_COLUMNS = 22
     EMAIL_HOST = 'smtp.gmail.com'
     EMAIL_PORT = 587
     EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
@@ -49,16 +56,38 @@ class FileHandler:
             
         return True, ""
 
+    """Process uploaded file and return DataFrame."""
     @staticmethod
     def process_file(file_path: str) -> pd.DataFrame:
-        """Process uploaded file and return DataFrame."""
-        if file_path.endswith('.csv'):
-            chunks = pd.read_csv(file_path, chunksize=Config.CHUNK_SIZE, encoding='utf-8')
-            data = pd.concat(chunks, ignore_index=True)
-        else:
-            data = pd.read_excel(file_path)
+        logger.info(f"Starting to process file: {file_path}")
         
-        return data.iloc[:, :Config.MAX_COLUMNS].fillna("N/A")
+        try:
+            # Check if the file is a CSV
+            if file_path.endswith('.csv'):
+                logger.info("File type: CSV")
+                logger.debug(f"Reading CSV in chunks of size: {Config.CHUNK_SIZE}")
+                chunks = pd.read_csv(file_path, chunksize=Config.CHUNK_SIZE, encoding='utf-8', low_memory=False)
+                data = pd.concat(chunks, ignore_index=True)
+                data = data.map(lambda x: x.strip() if isinstance(x, str) else x)
+                logger.info("CSV file successfully processed and concatenated.")
+            else:
+                logger.info("File type: Excel")
+                data = pd.read_excel(file_path)
+                logger.info("Excel file successfully processed.")
+
+            # Displaying the shape and head of the DataFrame for debugging
+            logger.debug(f"DataFrame shape: {data.shape}")
+            logger.debug(f"DataFrame head: \n{data.head()}")
+
+            # Limiting columns and filling NaN values
+            processed_data = data.iloc[:, :Config.MAX_COLUMNS].fillna("N/A")
+            logger.info("Data processing completed with column limit and NaN handling.")
+            return processed_data
+
+        except Exception as e:
+            logger.error(f"Error processing file: {str(e)}", exc_info=True)
+            raise
+
 
 
 class EmailService:
@@ -139,37 +168,6 @@ class EmailService:
             </body>
         </html>
         """
-
-    '''
-    @staticmethod
-    def format_email_body(employee_data: Dict) -> str:
-        """Format employee details into email body (HTML format)."""
-        return (
-            f"<p>Dear {employee_data.get('Name', 'Employee')},</p>"
-            "<p>We are pleased to share your updated transportation details:</p>"
-            "<ul>"
-            f"<li> Employee Code: {employee_data.get('Emp Code', 'N/A')}</li>"
-            f"<li> Area: {employee_data.get('Area', 'N/A')}</li>"
-            f"<li> Location: {employee_data.get('Location-Delhi', 'N/A')}</li>"
-            f"<li> Pickup Time: {employee_data.get('Pickup Time', 'N/A')}</li>"
-            f"<li> Driver Contact Number: {employee_data.get('Contact No.', 'N/A')}</li>"
-            f"<li> Process: {employee_data.get('Process', 'N/A')}</li>"
-            "</ul>"
-            "<p><strong>Note:</strong></p>"
-            "<ol>"
-            "<li>Please remember your route number.</li>"
-            "<li>Please board the cab as per scheduled pick-up time to avoid any inconvenience.</li>"
-            "<li>For any query call on transport helpline number (9266903058) or mail on gl-transport@globallogic.com.</li>"
-            "<li>Use this <a href='https://drive.google.com/file/d/1_zHCfyZ4D4S__gjHnq6LtlzbmjAR35RS/view'>link</a> for transport policy.</li>"
-            "</ol>"
-            "<p>Please ensure you are available at the designated pickup location on time. "
-            "If you have any questions or need further assistance, feel free to reach out.</p>"
-            "<p>Best regards,<br>Your Admin Team</p>"
-        )
-
-    
-    '''
-    
     
     
     """Send email using SMTP with error handling."""
@@ -199,12 +197,14 @@ class EmailService:
             logger.error(f"Failed to send email to {to_email}: {str(e)}")
             return False
 
+
+
+
 """Handle file upload and process employee data."""
 def handle_employee_form(request: HttpRequest) -> HttpResponse:
     if request.method != 'POST':
-        return render(request, 'front/index.html', 
+        return render(request, 'front/employee.html', 
                      {'data_dict': request.session.get('data_dict')})
-
     try:
         uploaded_file = request.FILES.get('employee_file')
         is_valid, error_message = FileHandler.validate_file(uploaded_file)
@@ -240,36 +240,117 @@ def handle_employee_form(request: HttpRequest) -> HttpResponse:
         logger.error(f"Error processing file: {str(e)}", exc_info=True)
         messages.error(request, f"Error processing file: {str(e)}")
 
-    return render(request, 'front/index.html', 
+    return render(request, 'front/employee.html', 
                  {'data_dict': request.session.get('data_dict')})
 
 
+
+
+
+def search_employee_data(request):
+    search_query = request.GET.get('search', '').strip().lower()
+    data_dict = request.session.get('data_dict', [])
+
+    # If a search query exists, filter the data
+    if search_query:
+        filtered_data = [
+            row for row in data_dict
+            if any(search_query in str(value).lower() for value in row.values())
+        ]
+    else:
+        filtered_data = data_dict  # Show all data if no search query
+    return JsonResponse({'data': filtered_data})
+
+
+def sort_employee_data(request):
+    column = request.GET.get('column')
+    direction = request.GET.get('direction', 'asc')
+    data_dict = request.session.get('data_dict', [])
+
+    # Your data (assuming data_dict is available)
+    data_list = list(data_dict)  # Convert QuerySet to list if needed
+
+    # Sorting logic
+    sorted_data = sorted(data_list, key=lambda x: x[column], reverse=(direction == "desc"))
+
+    return JsonResponse({"data": sorted_data})
+
+def fetch_columns(request):
+    data_dict = request.session.get('data_dict', [])
+    
+    # Extract column names from the first dictionary entry if available
+    columns = list(data_dict[0].keys()) if data_dict else []
+
+    return JsonResponse({"columns": columns})
+
+
+def employee_message_template(request):
+    return render(request, 'front/employee_message_template.html')
+
+
+def show(request):
+    """Fetch data from the uploaded file and return as JSON."""
+    uploaded_data = request.session.get('data_dict', [])
+    return JsonResponse(uploaded_data, safe=False)
+
+
+
+
+
 """Send emails to employees using parallel processing."""
-def send_employee_emails(request: HttpRequest) -> HttpResponse:
+def send_employee_emails(request):
     if request.method != 'POST':
         return JsonResponse({"error": "Invalid request method"}, status=400)
-
+    
     data_dict = request.session.get('data_dict')
     if not data_dict:
-        return JsonResponse({"error": "No data found. Please upload a valid file first."}, status=400)
-
+        messages.error(request, "No data found. Please upload a valid file first.")
+        return JsonResponse({"error": "No data found"}, status=400)
+    
     email_service = EmailService()
-
-    # Process emails in parallel using ThreadPoolExecutor
-    with ThreadPoolExecutor(max_workers=Config.MAX_WORKERS) as executor:
-        send_email_partial = partial(
-            lambda row: email_service.send_email(row.get('Email', ''), 
-            'Updated Roster', 
-            email_service.format_email_body(row)
+    
+    try:
+        # Process emails in parallel using ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=Config.MAX_WORKERS) as executor:
+            send_email_partial = partial(
+                lambda row: email_service.send_email(
+                    row.get('Email', ''),
+                    'Updated Roster',
+                    email_service.format_email_body(row)
+                )
             )
-        )
-        results = list(executor.map(send_email_partial, data_dict))
+            results = list(executor.map(send_email_partial, data_dict))
+        
+        success_count = sum(results)
+        total_count = len(results)
+        
+        if success_count == total_count:
+            messages.success(
+                request, 
+                f"All {success_count} emails were sent successfully!"
+            )
+        else:
+            messages.warning(
+                request, 
+                f"Email sending completed. {success_count} of {total_count} emails sent successfully."
+            )
+        
+        return JsonResponse({
+            "status": "success",
+            "message": "Email sending completed.",
+            "success_count": success_count,
+            "total_count": total_count
+        })
+        
+    except Exception as e:
+        messages.error(request, f"An error occurred while sending emails: {str(e)}")
+        return JsonResponse({
+            "status": "error",
+            "message": str(e)
+        }, status=500)
 
-    success_count = sum(results)
-    total_count = len(results)
 
-    return JsonResponse({
-        "message": "Email sending completed.",
-        "success_count": success_count,
-        "total_count": total_count
-    })
+
+
+def employee_view(request):
+    return render(request, 'front/employee.html')

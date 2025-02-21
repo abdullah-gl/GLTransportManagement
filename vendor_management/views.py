@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 from .transport_image import TransportDataProcessor
 
 # Initialize logging and environment variables
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('django')
 load_dotenv()
 
 class Config:
@@ -111,8 +111,11 @@ class FileHandler:
             if file_path.endswith('.csv'):
                 chunks = pd.read_csv(file_path, chunksize=Config.CHUNK_SIZE, encoding='utf-8')
                 data = pd.concat(chunks, ignore_index=True)
+                data = data.map(lambda x: x.strip() if isinstance(x, str) else x)
             else:
                 data = pd.read_excel(file_path)
+                data = data.map(lambda x: x.strip() if isinstance(x, str) else x)
+                
             
             if data.empty:
                 raise FileHandlerError("File contains no data")
@@ -271,6 +274,7 @@ class EmailService:
                 image_pattern in filename.lower()):
                 self._attach_file(msg, os.path.join(vendor_directory_path, filename))
 
+
 def handle_vendor_form(request: HttpRequest) -> HttpResponse:
     """
     Handles the vendor form submission and file processing
@@ -282,8 +286,8 @@ def handle_vendor_form(request: HttpRequest) -> HttpResponse:
         HttpResponse: Rendered template with processing results
     """
     if request.method != 'POST':
-        return render(request, 'front/index.html', 
-                     {'vendor_data_dict': request.session.get('vendor_data_dict')})
+        return render(request, 'front/vendor.html', 
+                     {'data_dict': request.session.get('vendor_data_dict')})
 
     try:
         uploaded_file = request.FILES.get('vendor_file')
@@ -322,10 +326,45 @@ def handle_vendor_form(request: HttpRequest) -> HttpResponse:
         logger.error(f"Unexpected error in handle_vendor_form: {str(e)}", exc_info=True)
         messages.error(request, "An unexpected error occurred while processing the file")
 
-    return render(request, 'front/index.html', 
-                 {'vendor_data_dict': request.session.get('vendor_data_dict')})
+    return render(request, 'front/vendor.html', 
+                 {'data_dict': request.session.get('vendor_data_dict')})
 
-def send_vendor_emails(request: HttpRequest) -> HttpResponse:
+
+
+def search_vendor_data(request):
+    search_query = request.GET.get('search', '').strip().lower()
+    data_dict = request.session.get('vendor_data_dict', [])
+
+    # If a search query exists, filter the data
+    if search_query:
+        filtered_data = [
+            row for row in data_dict
+            if any(search_query in str(value).lower() for value in row.values())
+        ]
+    else:
+        filtered_data = data_dict  # Show all data if no search query
+    return JsonResponse({'data': filtered_data})
+
+
+
+def sort_vendor_data(request):
+    column = request.GET.get('column')
+    direction = request.GET.get('direction', 'asc')
+    data_dict = request.session.get('vendor_data_dict', [])
+
+    # Your data (assuming data_dict is available)
+    data_list = list(data_dict)  # Convert QuerySet to list if needed
+
+    # Sorting logic
+    sorted_data = sorted(data_list, key=lambda x: x[column], reverse=(direction == "desc"))
+
+    return JsonResponse({"data": sorted_data})
+
+
+
+
+
+def send_vendor_emails(request: HttpRequest) -> HttpResponse:    
     """
     Processes vendor data and sends emails to vendors
     
@@ -336,11 +375,13 @@ def send_vendor_emails(request: HttpRequest) -> HttpResponse:
         JsonResponse: Processing results and status
     """
     if request.method != 'POST':
+        logger.info("Request method is not POST")
         return JsonResponse({"error": "Invalid method"}, status=400)
 
     try:
-        # Get vendor data and file path from session
+        # Get vendor data and file path from session        
         vendor_data = request.session.get('vendor_data_dict')
+        logger.info(vendor_data)
         file_path = request.session.get('uploaded_file_path')
         
         if not vendor_data or not file_path:
@@ -446,4 +487,7 @@ def cleanup_vendor_files(vendor_media_path: str, vendor_name: str, vendor_file_n
     os.remove(vendor_file_name)
     logger.debug(f"Removed temporary Excel file: {vendor_file_name}")
     
+    
+def vendor_view(request):
+    return render(request, 'front/vendor.html')
     

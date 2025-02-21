@@ -1,0 +1,116 @@
+{% extends 'front/base.html' %}
+{% block body %}
+
+<div class="container py-4">
+    <!-- File Upload Section -->
+    <div class="mb-4">
+        <h2 class="mb-3">Upload Data File</h2>
+        <div class="col-md-6">
+            <input type="file" id="fileInput" class="form-control" accept=".xlsx,.xls,.csv">
+        </div>
+    </div>
+
+    <!-- Data Table Section -->
+    <div class="card">
+        <div class="card-header bg-light">
+            <h3 class="card-title mb-0">Data Table View</h3>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive" style="max-height: 600px;">
+                <table id="dataTable" class="table table-striped table-bordered">
+                    <thead class="bg-light" style="background-color:red; width: 250px;">
+                        <!-- Headers will be dynamically populated -->
+                    </thead>
+                    <tbody>
+                        <!-- Data will be dynamically populated -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- CSS Dependencies -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css" rel="stylesheet">
+<link href="https://cdn.datatables.net/buttons/2.4.2/css/buttons.dataTables.min.css" rel="stylesheet">
+
+<style>
+    .dataTables_wrapper .dt-buttons {
+        margin-bottom: 1rem;
+    }
+    .card {
+        box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    }
+    thead {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+    }
+</style>
+
+<!-- JavaScript Dependencies -->
+<script src="https://code.jquery.com/jquery-3.7.0.js"></script>
+<script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.2/js/dataTables.buttons.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/pdfmake.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/vfs_fonts.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<script>
+$(document).ready(function() {
+    let dataTable = null;
+
+    $('#fileInput').on('change', function(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const data = e.target.result;
+                const workbook = XLSX.read(data, { type: 'binary' });
+                const sheetName = workbook.SheetNames[0];
+                const sheet = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1 });
+
+                if (sheet.length === 0) {
+                    alert('The uploaded file is empty.');
+                    return;
+                }
+
+                // Initialize DataTable with the new data
+                if (dataTable) {
+                    dataTable.destroy();
+                }
+
+                const columns = sheet[0].map(col => ({ title: col }));
+                const tableData = sheet.slice(1);
+
+                dataTable = $('#dataTable').DataTable({
+                    data: tableData,
+                    columns: columns,
+                    dom: '<"d-flex justify-content-between align-items-center mb-3"Bf>rtip',
+                    buttons: [
+                        {
+                            extend: 'collection',
+                            text: 'Export',
+                            buttons: ['copy', 'excel', 'csv', 'pdf']
+                        }
+                    ],
+                    pageLength: 25,
+                    responsive: true
+                });
+            } catch (error) {
+                console.error('Error processing file:', error);
+                alert('Error processing the file. Please make sure it\'s a valid Excel or CSV file.');
+            }
+        };
+
+        reader.readAsBinaryString(file);
+    });
+});
+</script>
+
+{% endblock %}

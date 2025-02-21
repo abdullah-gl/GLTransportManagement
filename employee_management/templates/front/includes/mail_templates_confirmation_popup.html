@@ -1,0 +1,155 @@
+<!-- Confirmation Popup -->
+<div id="confirmationPopup" class="custom-popup">
+    <div class="custom-popup-content">
+        <button class="close-btn">&times;</button>
+        <h5 class="popup-title">Please confirm the details below before sharing with employees.</h5>
+
+        <!-- Template Previews and Selected Details -->
+        <div class="popup-section">
+            <div id="topTemplatePreview"></div>
+        </div>
+
+        <div class="popup-section">
+            <ul id="selectedDetailsList" class="styled-list"></ul>
+        </div>
+
+        <div class="popup-section">
+            <div id="bottomTemplatePreview"></div>
+        </div>
+
+        <div class="popup-actions">
+            <button class="btn cancel-btn" id="cancelPopup">Cancel</button>
+            <button id="confirmButton" class="btn confirm-btn">Confirm</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        document.getElementById("confirmButton").addEventListener("click", function () {
+            document.getElementById("actionButtons").classList.remove("d-none");
+            document.getElementById("confirmationPopup").style.display = "none";
+        });
+
+        document.getElementById("cancelPopup").addEventListener("click", function () {
+            document.getElementById("confirmationPopup").style.display = "none";
+        });
+    });
+</script>
+
+<style>
+/* General popup styles */
+.custom-popup {
+    display: none;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    padding: 25px;
+    border-radius: 10px;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+    z-index: 1050;
+    width: 900px;
+    text-align: center;
+    max-height: 80vh;
+    overflow-y: auto;
+    transition: all 0.3s ease-in-out;
+}
+
+/* Close button */
+.close-btn {
+    position: absolute;
+    top: 12px;
+    right: 15px;
+    border: none;
+    background: none;
+    font-size: 22px;
+    cursor: pointer;
+    color: #555;
+    transition: color 0.2s;
+}
+
+.close-btn:hover {
+    color: #ff5a5f;
+}
+
+/* Popup title */
+.popup-title {
+    margin-bottom: 15px;
+    font-weight: bold;
+    font-size: 18px;
+    color: #333;
+}
+
+/* Sections */
+.popup-section {
+    margin-bottom: 15px;
+    padding: 10px;
+    border-radius: 5px;
+    background: #f9f9f9;
+    text-align: left;
+}
+
+/* Styled list */
+.styled-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.styled-list li {
+    padding: 8px;
+    border-bottom: 1px solid #ddd;
+}
+
+/* Buttons */
+.popup-actions {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.btn {
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: bold;
+    border: none;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: all 0.3s;
+}
+
+.cancel-btn {
+    background: #f0f0f0;
+    color: #333;
+}
+
+.cancel-btn:hover {
+    background: #ddd;
+}
+
+.confirm-btn {
+    background: #28a745;
+    color: white;
+}
+
+.confirm-btn:hover {
+    background: #218838;
+}
+
+/* Responsive styles */
+@media (max-width: 768px) {
+    .custom-popup {
+        width: 90%;
+    }
+}
+
+@media (max-width: 480px) {
+    .custom-popup {
+        width: 95%;
+        padding: 15px;
+    }
+}
+</style>

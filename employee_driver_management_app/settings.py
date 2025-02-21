@@ -39,10 +39,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'mainapp',
     'employee_management',
-    'vendor_management',
-    
+    'vendor_management',    
 ]
 
 MIDDLEWARE = [
@@ -122,7 +120,7 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
 
-STATIC_MEDIA_URL = os.path.join(BASE_DIR, 'mainapp','static') 
+STATIC_MEDIA_URL = os.path.join(BASE_DIR, 'employee_management','static') 
 STATIC_URL = 'static/'
 MEDIA_URL = 'media/'  # URL to access media files in development
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media') 
@@ -134,23 +132,66 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
 
+
+
+# Get the base directory
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Ensure the logs directory exists
+LOGS_DIR = os.path.join(BASE_DIR, "logs")
+os.makedirs(LOGS_DIR, exist_ok=True)  # ✅ Create logs directory if it doesn't exist
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
+
+    # Formatters: Define how logs should appear
+    'formatters': {
+        'verbose': {
+            'format': '[{levelname}] {asctime} {name} - {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '[{levelname}] {message}',
+            'style': '{',
+        },
+    },
+
+    # Handlers: Define where logs should be stored
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
+        'file_general': {
+            'class': 'logging.FileHandler',
+            'filename': 'logs/general.log',  # Store general logs
+            'formatter': 'verbose',
+        },
+        'file_email': {
+            'class': 'logging.FileHandler',
+            'filename': 'logs/email.log',  # Store email-specific logs
+            'formatter': 'verbose',
         },
     },
-    'root': {
-        'handlers': ['console'],
-        'level': 'INFO',  # Set to INFO to reduce verbosity
-    },
+
+    # Loggers: Define different loggers for apps
     'loggers': {
-        'django': {
-            'handlers': ['console'],
-            'level': 'INFO',  # Set to INFO to reduce verbosity
+        'django': {  # Default Django logs
+            'handlers': ['console', 'file_general'],
+            'level': 'INFO',
             'propagate': True,
+        },
+        'email_logger': {  # Email-specific logs
+            'handlers': ['file_email'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'django.server': {  # Suppress unnecessary logs
+            'handlers': ['console'],
+            'level': 'WARNING',  # Change to WARNING to hide INFO-level logs
+            'propagate': False,
         },
     },
 }
+

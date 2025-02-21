@@ -1,0 +1,202 @@
+{% extends "front/base.html" %}
+{% load static %}
+{% block content %}
+<!-- Load custom CSS for email template -->
+<link rel="stylesheet" href="{% static 'css/email_message_template.css' %}">
+<script src="{% static 'js/loader.js' %}"></script>
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-12">
+            <div class="card shadow-lg border-0 rounded-4 p-4">
+                <!-- Top Body Mail Template Section -->
+                <div class="mail-template-section">
+                    <h3>Top Body Mail Template</h3>
+                    <!-- Single editor container for top body -->
+                    <div id="topEditor" class="editor-container"></div>
+                </div>
+
+                <!-- Column Selection Section -->
+                <div class="column-selection-section mt-4">
+                    <h4 class="text-center mb-4">Select Details to Share with Employees</h4>
+
+                    <!-- Load Columns Button -->
+                    <div class="text-center mb-3">
+                        <button type="button" class="btn btn-primary px-4" id="fetchColumnsBtn">
+                            <i class="fas fa-sync-alt"></i> Load Columns
+                        </button>
+                    </div>
+
+                    <!-- Loading Spinner -->
+                    <div id="loadingSpinner" class="text-center d-none">
+                        <div class="spinner-border text-primary" role="status"></div>
+                        <p class="mt-2">Fetching data...</p>
+                    </div>
+
+                    <!-- Columns Display Box -->
+                    <div id="columnsBox" class="border rounded p-3" style="max-height: 350px; overflow-y: auto;">
+                        <p id="instructionText" class="text-muted text-center">
+                            Click the "Load Columns" button to fetch available details.
+                        </p>
+                        <div id="columnsList" class="mt-2"></div>
+                    </div>
+                </div>
+
+                <!-- Lower Body Mail Template Section -->
+                <div class="mail-template-section mt-4">
+                    <h3>Lower Body Mail Template</h3>
+                    <!-- Single editor container for bottom body -->
+                    <div id="bottomEditor" class="editor-container"></div>
+                </div>
+                <!-- Add Details Button -->
+                <div class="text-center mb-3 mt-4">
+                    <button type="button" class="btn btn-success px-4" id="addDetailsBtn">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor"
+                            class="bi bi-plus-circle me-2" viewBox="0 0 16 16">
+                            <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16" />
+                            <path
+                                d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4" />
+                        </svg>
+                        Add these details in mail to send employee
+                    </button>
+                </div>
+
+                <!-- Mail & Whatsapp send button -->
+                <div id="actionButtons" class="d-none d-flex justify-content-start align-items-center mt-4 gap-4">
+                    <!-- Trigger Modal instead of Form Submit -->
+                    <button type="button"
+                        class="btn btn-primary px-4 py-2 rounded-pill shadow-sm d-flex align-items-center gap-2"
+                        data-bs-toggle="modal" data-bs-target="#confirmModal">
+                        <i class="fas fa-envelope fa-lg"></i> Send Mail to Employees
+                    </button>
+
+                    {% include 'front/includes/popup.html' %}
+
+                    <form method="POST" action="">
+                        {% csrf_token %}
+                        <button type="submit"
+                            class="btn btn-success px-4 py-2 rounded-pill shadow-sm d-flex align-items-center gap-2">
+                            <i class="fab fa-whatsapp fa-lg"></i> Send WhatsApp
+                        </button>
+                    </form>
+                </div>
+                
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Confirmation Popup -->
+{% include 'front/includes/mail_templates_confirmation_popup.html' %}
+
+<!-- JavaScript for Editor Initialization and Event Handling -->
+<script>
+    let topEditor, bottomEditor;
+
+    // Initialize CKEditor instances
+    document.addEventListener('DOMContentLoaded', function () {
+        // Initialize top editor
+        ClassicEditor
+            .create(document.querySelector('#topEditor'))
+            .then(editor => {
+                topEditor = editor;
+            })
+            .catch(error => console.error('Top editor error:', error));
+
+        // Initialize bottom editor
+        ClassicEditor
+            .create(document.querySelector('#bottomEditor'))
+            .then(editor => {
+                bottomEditor = editor;
+            })
+            .catch(error => console.error('Bottom editor error:', error));
+    });
+
+    // Document ready handler
+    $(document).ready(function () {
+        // Load Columns Button Click Handler
+        $("#fetchColumnsBtn").click(function () {
+            $("#loadingSpinner").removeClass("d-none");
+            $("#instructionText").addClass("d-none");
+
+            // AJAX call to fetch columns
+            $.ajax({
+                url: "/fetch-columns/",
+                type: "GET",
+                success: function (data) {
+                    $("#loadingSpinner").addClass("d-none");
+                    $("#columnsList").empty();
+
+                    // Display fetched columns as checkboxes
+                    if (data.columns && data.columns.length > 0) {
+                        data.columns.forEach(function (col, index) {
+                            let checkboxId = "columnCheck" + index;
+                            $("#columnsList").append(`
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" value="${col}" id="${checkboxId}">
+                                <label class="form-check-label" for="${checkboxId}">
+                                    ${col}
+                                </label>
+                            </div>
+                        `);
+                        });
+                    } else {
+                        $("#columnsList").append(`
+                        <p class="text-danger text-center">No columns available</p>
+                    `);
+                    }
+                },
+                error: function () {
+                    $("#loadingSpinner").addClass("d-none");
+                    $("#columnsList").html(`
+                    <p class="text-danger text-center">Error retrieving columns</p>
+                `);
+                }
+            });
+        });
+
+        // Add Details Button Click Handler
+        $("#addDetailsBtn").click(function () {
+            let selectedDetails = [];
+
+            // Collect selected checkboxes
+            $("#columnsList input:checked").each(function () {
+                selectedDetails.push($(this).val());
+            });
+
+            // Validate selection
+            if (selectedDetails.length === 0) {
+                alert("Please select at least one detail.");
+                return;
+            }
+
+            // Get editor contents
+            const topTemplate = topEditor.getData();
+            const bottomTemplate = bottomEditor.getData();
+
+            // Update popup content
+            $("#topTemplatePreview").html(topTemplate);
+            $("#bottomTemplatePreview").html(bottomTemplate);
+
+            // Update selected details list
+            $("#selectedDetailsList").empty();
+            selectedDetails.forEach(function (detail) {
+                $("#selectedDetailsList").append(`
+                <li style="text-align: left; margin-left: 10px; list-style-type: disc;">
+                    ${detail}
+                </li>
+            `);
+            });
+
+            // Show popup
+            $("#confirmationPopup").fadeIn();
+        });
+
+        // Popup Close Handlers
+        $("#cancelPopup, .close-btn").click(function () {
+            $("#confirmationPopup").fadeOut();
+        });
+    });
+</script>
+
+{% endblock content %}

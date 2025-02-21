@@ -1,0 +1,325 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transport GTPL - Dashboard</title>
+    <link rel="icon" type="image/x-icon" href="{% static 'images/logo.jpg' %}">
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Google Fonts (Manrope) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200..800&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined">
+
+
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet">
+
+    <!-- Custom CSS (Should be after Bootstrap to avoid being overridden) -->
+    <link rel="stylesheet" href="{% static 'css/base1.css' %}">
+
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+    <!-- CKEditor -->
+    <script src="https://cdn.ckeditor.com/ckeditor5/39.0.0/classic/ckeditor.js"></script>
+
+    <!-- Bootstrap JS (Only once) -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Manrope', sans-serif;
+            display: flex;
+            min-height: 100vh;
+            background: #f5f5f5;
+            font-weight: 400;
+            line-height: 1.5;
+        }
+
+
+        .sidebar {
+            width: 250px;
+            background: #161a2d;
+            box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease-in-out;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            position: fixed;
+            z-index: 1001;
+            /* Increased z-index */
+        }
+
+        .sidebar.collapsed {
+            transform: translateX(-100%);
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .sidebar-header img {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+
+        .sidebar-header h2 {
+            font-size: 1.2rem;
+            color: #fff;
+        }
+
+        .sidebar-links {
+            list-style: none;
+            padding: 20px;
+        }
+
+        .sidebar-links h4 {
+            color: #fff;
+            font-size: 0.9rem;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+        }
+
+        .sidebar-links li {
+            margin-bottom: 5px;
+        }
+
+        .sidebar-links a {
+            display: flex;
+            align-items: center;
+            padding: 12px 15px;
+            color: #fff;
+            text-decoration: none;
+            border-radius: 8px;
+            transition: background-color 0.3s;
+            gap: 10px;
+        }
+
+        .sidebar-links a:hover {
+            background-color: #f5f5f5;
+            color: black;
+        }
+
+        .material-symbols-outlined {
+            font-size: 20px;
+        }
+
+        .account-container {
+            margin-top: auto;
+            border-top: 1px solid #eee;
+            padding-bottom: 20px;
+        }
+
+        .sidebar-toggle {
+            position: fixed;
+            left: 260px;
+            top: 26px;
+            z-index: 1002;
+            /* Higher than sidebar */
+            background: #333;
+            color: white;
+            border: none;
+            cursor: pointer;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: left 0.3s ease-in-out, background 0.3s;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .sidebar-toggle:hover {
+            background: #555;
+        }
+
+        .sidebar.collapsed+.sidebar-toggle {
+            left: 10px;
+        }
+
+        main {
+            margin-left: 250px;
+            padding: 20px;
+            flex: 1;
+            transition: margin-left 0.3s ease-in-out;
+            position: relative;
+            z-index: 1000;
+        }
+
+        main.expanded {
+            margin-left: 0;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .dotted-separator {
+            border: none;
+            border-top: 2px dotted #555;
+            margin: 5px 0px;
+        }
+
+
+        @media (max-width: 768px) {
+            .sidebar {
+                position: fixed;
+                height: 100%;
+            }
+
+            .sidebar-toggle {
+                left: 10px;
+                top: 10px;
+            }
+
+            main {
+                margin-left: 0;
+                padding-top: 70px;
+            }
+        }
+
+        .page-title {
+            color: black;
+            margin: 20px 40px;
+            font-weight: 600;
+        }
+
+        /* Focus styles for accessibility */
+        .sidebar-links a:focus,
+        .sidebar-toggle:focus {
+            outline: 2px solid #007bff;
+            outline-offset: 2px;
+        }
+    </style>
+</head>
+
+<body>
+    <aside class="sidebar" id="sidebar" role="navigation" aria-label="Main navigation">
+        <div class="sidebar-header">
+            <img src="{% static 'images/logo.jpg' %}" alt="Transport GTPL Logo" />
+            <h2>Transport GTPL</h2>
+        </div>
+        <ul class="sidebar-links main-menu">
+            <h4>Main Menu</h4>
+            <li>
+                <a href="{% url 'handle_employee_form' %}"
+                    {% if request.resolver_match.url_name == 'handle_employee_form' %} aria-current="page" {% endif %}>
+                    <span class="material-symbols-outlined" aria-hidden="true">person</span>
+                    Employee Form
+                </a>
+            </li>
+            <li>
+                <a href="{% url 'handle_vendor_form' %}"
+                    {% if request.resolver_match.url_name == 'handle_vendor_form' %} aria-current="page" {% endif %}>
+                    <span class="material-symbols-outlined" aria-hidden="true">storefront</span>
+                    Vendor
+                </a>
+            </li>
+        </ul>
+
+        <div class="account-container">
+            <ul class="sidebar-links account-section">
+                <h4>Account</h4>
+                <li>
+                    <a href="#">
+                        <span class="material-symbols-outlined" aria-hidden="true">account_circle</span>
+                        Profile
+                    </a>
+                </li>
+                <li>
+                    <a href="#">
+                        <span class="material-symbols-outlined" aria-hidden="true">settings</span>
+                        Settings
+                    </a>
+                </li>
+                <li>
+                    <form method="post" action="#" id="logout-form">
+                        {% csrf_token %}
+                        <a href="#" onclick="document.getElementById('logout-form').submit(); return false;">
+                            <span class="material-symbols-outlined" aria-hidden="true">logout</span>
+                            Logout
+                        </a>
+                    </form>
+                </li>
+            </ul>
+        </div>
+    </aside>
+    <button id="sidebar-toggle" class="sidebar-toggle" aria-label="Toggle sidebar" aria-expanded="true">
+        <span class="material-symbols-outlined" aria-hidden="true">chevron_right</span>
+    </button>
+    <main id="main" role="main">
+        <div class="container">
+            <div class="row">
+                {% block page_title %}
+                <h1 class="page-title">Employee Management</h1> <!-- Added page-title class -->
+                {% endblock %}
+                <hr class="dotted-separator" />
+                {% block content %}
+                {% endblock %}
+                {% block table_data %}
+                {% endblock table_data %}
+            </div>
+        </div>
+    </main>
+
+    <script>
+        document.getElementById("sidebar-toggle").addEventListener("click", function () {
+            const sidebar = document.getElementById("sidebar");
+            const main = document.getElementById("main");
+            const isCollapsed = sidebar.classList.toggle("collapsed");
+            main.classList.toggle("expanded");
+
+            // Update toggle icon and ARIA attributes
+            const toggleIcon = this.querySelector(".material-symbols-outlined");
+            toggleIcon.textContent = isCollapsed ? "chevron_right" : "chevron_left";
+            this.setAttribute("aria-expanded", !isCollapsed);
+        });
+
+        // Close sidebar on mobile when clicking outside
+        document.addEventListener("click", function (event) {
+            if (window.innerWidth <= 768) {
+                const sidebar = document.getElementById("sidebar");
+                const sidebarToggle = document.getElementById("sidebar-toggle");
+
+                if (!sidebar.contains(event.target) &&
+                    !sidebarToggle.contains(event.target) &&
+                    !sidebar.classList.contains("collapsed")) {
+                    sidebarToggle.click();
+                }
+            }
+        });
+
+        // Handle escape key to close sidebar
+        document.addEventListener("keydown", function (event) {
+            if (event.key === "Escape") {
+                const sidebar = document.getElementById("sidebar");
+                if (!sidebar.classList.contains("collapsed")) {
+                    document.getElementById("sidebar-toggle").click();
+                }
+            }
+        });
+    </script>
+</body>
+
+</html>
