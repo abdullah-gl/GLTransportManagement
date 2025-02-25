@@ -7,6 +7,7 @@ from django.shortcuts import render, redirect
 from django.http import HttpRequest, HttpResponse
 from concurrent.futures import ThreadPoolExecutor
 from email.mime.multipart import MIMEMultipart
+from django.core.mail import EmailMessage
 from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
 from django.http import JsonResponse
@@ -16,7 +17,7 @@ from dotenv import load_dotenv
 import mimetypes
 import smtplib
 import os
-
+import json
 
 # Configuration
 load_dotenv()
@@ -89,113 +90,39 @@ class FileHandler:
             raise
 
 
-
 class EmailService:
     def __init__(self):
         self.sender_email = Config.EMAIL_HOST_USER
         self.sender_password = Config.EMAIL_HOST_PASSWORD
+        self.smtp_host = Config.EMAIL_HOST
+        self.smtp_port = Config.EMAIL_PORT
         self.img_path = Config.BANNER_IMAGE_PATH
     
-    @staticmethod
-    def attach_banner_image(msg, img_path):
-        with open(img_path, "rb") as img_file:
-            img = MIMEImage(img_file.read(), _subtype=mimetypes.guess_type(img_path)[0].split('/')[1])
-            img.add_header("Content-ID", "<banner>")
-            img.add_header("Content-Disposition", "inline", filename=os.path.basename(img_path))
-            msg.attach(img)
-    
-    
-    @staticmethod
-    def format_email_body(employee_data: Dict) -> str:
-        """Format employee details into email body (HTML format)."""
-        return f"""
-        <html>
-            <head>
-                <style>
-                    body {{
-                        font-family: Arial, sans-serif;
-                        color: #333;
-                    }}
-                    .container {{
-                        text-align: left; /* Centers the image */
-                        margin: 20px 0;
-                    }}
-                    img {{
-                        width: 100%;
-                        max-width: 600px;
-                        display: block;
-                        margin: 0; /* Ensures the image stays centered */
-                    }}
-                    p, ul, ol {{
-                        font-size: 16px;
-                        line-height: 1.5;
-                    }}
-                    ul, ol {{
-                        margin-left: 20px;
-                    }}
-                    a {{
-                        color: #1a73e8;
-                        text-decoration: none;
-                    }}
-                    a:hover {{
-                        text-decoration: underline;
-                    }}
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <img src="cid:banner" alt="Banner Image">
-                </div>
-                <p>Dear {employee_data.get('Name', 'Employee')},</p>
-                <p>We are pleased to share your updated transportation details:</p>
-                <ul>
-                    <li>Employee Code: {employee_data.get('Emp Code', 'N/A')}</li>
-                    <li>Area: {employee_data.get('Area', 'N/A')}</li>
-                    <li>Location: {employee_data.get('Location-Delhi', 'N/A')}</li>
-                    <li>Pickup Time: {employee_data.get('Pickup Time', 'N/A')}</li>
-                    <li>Driver Contact Number: {employee_data.get('Contact No.', 'N/A')}</li>
-                    <li>Process: {employee_data.get('Process', 'N/A')}</li>
-                </ul>
-                <p><strong>Note:</strong></p>
-                <ol>
-                    <li>Please remember your route number.</li>
-                    <li>Please board the cab as per scheduled pick-up time to avoid any inconvenience.</li>
-                    <li>For any query call on transport helpline number (9266903058) or mail on gl-transport@globallogic.com.</li>
-                    <li>Use this <a href="https://drive.google.com/file/d/1_zHCfyZ4D4S__gjHnq6LtlzbmjAR35RS/view">link</a> for transport policy.</li>
-                </ol>
-                <p>Please ensure you are available at the designated pickup location on time. If you have any questions or need further assistance, feel free to reach out.</p>
-                <p>Best regards,<br>Your Admin Team</p>
-            </body>
-        </html>
-        """
-    
-    
-    """Send email using SMTP with error handling."""
-    def send_email(self, to_email: str, subject: str, body: str) -> bool:
-        if '@' not in to_email:
-            logger.warning(f"Invalid email format: {to_email}")
+    def send_email(self, subject, body, recipient):
+        if not isinstance(recipient, str) or '@' not in recipient:
+            logger.warning(f"Invalid email format: {recipient}")
             return False
 
         try:
             msg = MIMEMultipart()
             msg['From'] = self.sender_email
-            msg['To'] = to_email
+            msg['To'] = recipient
             msg['Subject'] = subject
             msg.attach(MIMEText(body, 'html'))
-            img_path = self.img_path
-            self.attach_banner_image(msg, img_path)
 
-            with smtplib.SMTP(Config.EMAIL_HOST, Config.EMAIL_PORT) as server:
+            with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
                 server.starttls()
                 server.login(self.sender_email, self.sender_password)
                 server.send_message(msg)
-            
-            logger.info(f"Email sent successfully to {to_email}")
+
+            logger.info(f"Email sent successfully to {recipient}")
             return True
 
+        except smtplib.SMTPException as e:
+            logger.error(f"SMTP error while sending email to {recipient}: {str(e)}")
         except Exception as e:
-            logger.error(f"Failed to send email to {to_email}: {str(e)}")
-            return False
+            logger.error(f"Unexpected error while sending email to {recipient}: {str(e)}")
+        return False
 
 
 
@@ -244,9 +171,6 @@ def handle_employee_form(request: HttpRequest) -> HttpResponse:
                  {'data_dict': request.session.get('data_dict')})
 
 
-
-
-
 def search_employee_data(request):
     search_query = request.GET.get('search', '').strip().lower()
     data_dict = request.session.get('data_dict', [])
@@ -288,67 +212,79 @@ def employee_message_template(request):
     return render(request, 'front/employee_message_template.html')
 
 
-def show(request):
-    """Fetch data from the uploaded file and return as JSON."""
-    uploaded_data = request.session.get('data_dict', [])
-    return JsonResponse(uploaded_data, safe=False)
-
-
-
-
-
-"""Send emails to employees using parallel processing."""
 def send_employee_emails(request):
     if request.method != 'POST':
         return JsonResponse({"error": "Invalid request method"}, status=400)
-    
-    data_dict = request.session.get('data_dict')
-    if not data_dict:
-        messages.error(request, "No data found. Please upload a valid file first.")
-        return JsonResponse({"error": "No data found"}, status=400)
-    
-    email_service = EmailService()
-    
-    try:
-        # Process emails in parallel using ThreadPoolExecutor
-        with ThreadPoolExecutor(max_workers=Config.MAX_WORKERS) as executor:
-            send_email_partial = partial(
-                lambda row: email_service.send_email(
-                    row.get('Email', ''),
-                    'Updated Roster',
-                    email_service.format_email_body(row)
-                )
-            )
-            results = list(executor.map(send_email_partial, data_dict))
-        
-        success_count = sum(results)
-        total_count = len(results)
-        
-        if success_count == total_count:
-            messages.success(
-                request, 
-                f"All {success_count} emails were sent successfully!"
-            )
-        else:
-            messages.warning(
-                request, 
-                f"Email sending completed. {success_count} of {total_count} emails sent successfully."
-            )
-        
-        return JsonResponse({
-            "status": "success",
-            "message": "Email sending completed.",
-            "success_count": success_count,
-            "total_count": total_count
-        })
-        
-    except Exception as e:
-        messages.error(request, f"An error occurred while sending emails: {str(e)}")
-        return JsonResponse({
-            "status": "error",
-            "message": str(e)
-        }, status=500)
 
+    try:
+        data = json.loads(request.body.decode("utf-8"))
+        logger.info(f"Received Data: {data}")
+        
+        top_template = data.get("top_template", "").strip()
+        bottom_template = data.get("bottom_template", "").strip()
+        selected_details = data.get("selected_details", [])
+
+        logger.info(f"Top Template: {top_template}")
+        logger.info(f"Selected Details: {selected_details}")
+        logger.info(f"Bottom Template: {bottom_template.encode('ascii', 'ignore').decode()}")
+
+        data_dict = request.session.get('data_dict', [])
+        if not isinstance(data_dict, list) or not data_dict:
+            messages.error(request, "No data found. Please upload a valid file first.")
+            return JsonResponse({"error": "No data found"}, status=400)
+
+        email_service = EmailService()
+        email_sent_count = 0
+
+        for row in data_dict:
+            email = row.get("Email", "").strip()
+            if not email or '@' not in email:
+                logger.warning(f"Skipping row due to missing or invalid email: {row}")
+                continue
+            
+            # Convert employee data to HTML format
+            each_employee_data = """
+            <div style="padding: 12px; font-size: 16px; background-color: #eef3ff; 
+                        border-left: 5px solid #4a90e2; margin: 12px 0;">
+                <p style="margin: 0; line-height: 1.6;">""" + "<br>".join(
+                    [f"• <strong>{col}</strong>: {row.get(col, '')}" for col in selected_details]
+                ) + """</p>
+            </div>
+            """
+
+            # Construct full email body in HTML format
+            email_body = f"""
+            <p>{top_template}</p<br>
+            <div style="padding: 10px; font-size: 14px; background-color: #eef3ff; 
+            border-left: 4px solid #4a90e2; margin: 10px 0;">
+                {each_employee_data}
+            </div>
+            <p>{bottom_template}</p>
+            """
+
+            logger.info(f"Sending email to {email} with body:\n{email_body}")
+
+            try:
+                email_service.send_email(
+                    subject="Roster Updated",
+                    body=email_body,
+                    recipient=email,
+                )
+                email_sent_count += 1
+                logger.info(f"Successfully sent email to {email}")
+                
+                
+            except Exception as e:
+                logger.error(f"Failed to send email to {email}: {str(e)}")
+
+        return JsonResponse({"status": "success", "emails_sent": email_sent_count})
+
+    except json.JSONDecodeError:
+        logger.error("Invalid JSON format in request body")
+        return JsonResponse({"error": "Invalid JSON format"}, status=400)
+    except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}")
+        return JsonResponse({"error": "Something went wrong"}, status=500)
 
 
 

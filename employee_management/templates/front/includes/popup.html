@@ -33,6 +33,8 @@
 <!-- Bootstrap Bundle (Includes Popper) -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
+
+
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         const emailForm = document.getElementById('emailForm');
@@ -44,38 +46,61 @@
             const originalText = submitButton.innerHTML;
             submitButton.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Sending...';
             submitButton.disabled = true;
+
+            // Extract CKEditor content
+            const topTemplate = topEditor.getData();
+            const bottomTemplate = bottomEditor.getData();
+
+            // Extract selected columns from checkboxes
+            let selectedDetails = [];
+            document
+                .querySelectorAll("#columnsList input:checked")
+                .forEach((checkbox) => {
+                    selectedDetails.push(checkbox.value);
+                });
+
+            // Validate CSRF token
+            const csrfTokenElement = document.querySelector('input[name="csrfmiddlewaretoken"]');
+            if (!csrfTokenElement) {
+                console.error("CSRF token not found!");
+                showToast("CSRF token missing!", "danger");
+                resetButton(submitButton, originalText);
+                return;
+            }
+            const csrfToken = csrfTokenElement.value;
+
+            // Validate input
+            if (!topTemplate.trim() || !bottomTemplate.trim() || selectedDetails.length === 0) {
+                showToast("Please fill in all details before sending.", "warning");
+                resetButton(submitButton, originalText);
+                return;
+            }
     
             fetch('{% url "send_employee_emails" %}', {
                 method: 'POST',
                 headers: {
-                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                    'X-CSRFToken': csrfToken,
                     'Content-Type': 'application/json'
                 },
-                credentials: 'same-origin'
+                credentials: 'same-origin',
+                body: JSON.stringify({
+                    top_template: topTemplate,
+                    bottom_template: bottomTemplate,
+                    selected_details: selectedDetails,
+                }),
             })
                 .then(response => response.json())
                 .then(data => {
-                    console.log("Server Response:", data);
-                    console.log("Data Type: ", typeof data);
-    
                     const modalElement = document.getElementById('confirmModal');
                     if (modalElement) {
-                        // Initialize modal if not already initialized
                         const modal = bootstrap.Modal.getInstance(modalElement) || new bootstrap.Modal(modalElement);
-                        
-                        // Ensure modal is completely ready before hiding it
-                        modalElement.addEventListener('shown.bs.modal', function () {
-                            modal.hide();
-                        });
+                        modal.hide(); // Hide the modal immediately after successful request
+                    }
 
-                        if (typeof data.status === 'string' && data.status === 'success') {
-                            showToast("Emails sent successfully!", "success");
-                        } else {
-                            console.log("Error message");
-                            showToast("Error sending emails.", "danger");
-                        }
+                    if (data.status === 'success') {
+                        showToast("Emails sent successfully!", "success");
                     } else {
-                        console.error("Modal element not found");
+                        showToast("Error sending emails.", "danger");
                     }
                 })
                 .catch(error => {
@@ -87,16 +112,19 @@
                     submitButton.disabled = false;
                 });
         });
-    
+
         function showToast(message, type) {
             const toastContainer = document.getElementById('toastContainer');
             if (!toastContainer) {
                 console.error("Toast container not found!");
                 return;
             }
-    
+
+            // Clear previous toasts
+            toastContainer.innerHTML = "";
+
             const toastHTML = `
-                <div class="toast align-items-center text-white bg-${type} border-0 fade" role="alert" aria-live="assertive" aria-atomic="true">
+                <div class="toast align-items-center text-white bg-${type} border-0 fade show" role="alert" aria-live="assertive" aria-atomic="true">
                     <div class="d-flex">
                         <div class="toast-body">
                             <i class="fas ${type === 'success' ? 'fa-check-circle' : 'fa-info-circle'} me-2"></i>
@@ -105,10 +133,10 @@
                         <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
                     </div>
                 </div>`;
-    
+
             toastContainer.innerHTML += toastHTML;
             const newToast = new bootstrap.Toast(toastContainer.lastElementChild);
-            setTimeout(() => newToast.show(), 100);
+            newToast.show();
         }
     });
 </script>

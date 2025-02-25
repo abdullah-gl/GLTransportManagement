@@ -48,6 +48,7 @@
                     <!-- Single editor container for bottom body -->
                     <div id="bottomEditor" class="editor-container"></div>
                 </div>
+
                 <!-- Add Details Button -->
                 <div class="text-center mb-3 mt-4">
                     <button type="button" class="btn btn-success px-4" id="addDetailsBtn">
@@ -86,8 +87,9 @@
     </div>
 </div>
 
-<!-- Confirmation Popup -->
+<!-- Confirmation Popup code in Includes Folder-->
 {% include 'front/includes/mail_templates_confirmation_popup.html' %}
+
 
 <!-- JavaScript for Editor Initialization and Event Handling -->
 <script>
@@ -132,7 +134,7 @@
                         data.columns.forEach(function (col, index) {
                             let checkboxId = "columnCheck" + index;
                             $("#columnsList").append(`
-                            <div class="form-check">
+                            <div id="columnsList" class="form-check">
                                 <input class="form-check-input" type="checkbox" value="${col}" id="${checkboxId}">
                                 <label class="form-check-label" for="${checkboxId}">
                                     ${col}

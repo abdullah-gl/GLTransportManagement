@@ -1,18 +1,17 @@
-<!-- Stylish Button Section -->
-<div class="d-flex justify-content-start align-items-center mt-4 gap-4">
-
+<div id="actionButtons" class="d-none d-flex justify-content-start align-items-center mt-4 gap-4">
     <!-- Trigger Modal instead of Form Submit -->
-    <button type="button" class="btn btn-primary px-4 py-2 rounded-pill shadow-sm d-flex align-items-center gap-2"
+    <button type="button"
+        class="btn btn-primary px-4 py-2 rounded-pill shadow-sm d-flex align-items-center gap-2"
         data-bs-toggle="modal" data-bs-target="#confirmModal">
         <i class="fas fa-envelope fa-lg"></i> Send Mail to Employees
     </button>
 
-    <!-- Include the Popup -->
     {% include 'front/includes/popup.html' %}
 
     <form method="POST" action="">
         {% csrf_token %}
-        <button type="submit" class="btn btn-success px-4 py-2 rounded-pill shadow-sm d-flex align-items-center gap-2">
+        <button type="submit"
+            class="btn btn-success px-4 py-2 rounded-pill shadow-sm d-flex align-items-center gap-2">
             <i class="fab fa-whatsapp fa-lg"></i> Send WhatsApp
         </button>
     </form>
