@@ -1,21 +1,22 @@
 <div id="toastContainer" class="position-fixed top-0 end-0 p-3" style="z-index: 1050;"></div>
 
 <!-- Confirmation Modal -->
-<div class="modal fade" id="confirmVendorModal" tabindex="-1" aria-labelledby="confirmModalLabel" 
+<div class="modal fade" id="confirmModal" tabindex="-1" aria-labelledby="confirmModalLabel" 
     data-bs-backdrop="false" data-bs-animation="true">
     <div class="modal-dialog modal-dialog-centered animate__animated animate__fadeInUp">
         <div class="modal-content border-0 shadow-lg rounded-4"
             style="background: linear-gradient(145deg, #f0f2f5, #dfe3e8);">
             <div class="modal-header border-0 position-relative text-center">
-                <i class="fas fa-envelope-circle-check text-success fs-1 position-absolute top-0 start-50 translate-middle"></i>
+                <i
+                    class="fas fa-envelope-circle-check text-success fs-1 position-absolute top-0 start-50 translate-middle"></i>
                 <h5 class="modal-title fw-bold text-dark mt-4" id="confirmModalLabel">Confirm Email Sending</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body text-center">
-                <p class="mb-0 fs-5 text-secondary">Are you sure you want to send emails to vendors?</p>
+                <p class="mb-0 fs-5 text-secondary">Are you sure you want to send emails to Vendors?</p>
             </div>
             <div class="modal-footer d-flex justify-content-center gap-3 border-0">
-                <form id="vendorEmailForm">
+                <form id="emailForm">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-success rounded-pill px-4 shadow-sm">
                         Yes, Send Email
@@ -29,11 +30,15 @@
     </div>
 </div>
 
+<!-- Bootstrap Bundle (Includes Popper) -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+
 
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        const emailForm = document.getElementById('vendorEmailForm');
+        const emailForm = document.getElementById('emailForm');
+    
         emailForm.addEventListener('submit', function (e) {
             e.preventDefault();
     
@@ -41,48 +46,78 @@
             const originalText = submitButton.innerHTML;
             submitButton.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Sending...';
             submitButton.disabled = true;
+    
+            // Extract CKEditor content
+            const topTemplate = topEditor.getData();
+            const bottomTemplate = bottomEditor.getData();
+    
+            // Extract selected columns from checkboxes
+            let selectedDetails = Array.from(document.querySelectorAll("#columnsList input:checked"))
+                .map(checkbox => checkbox.value);
+    
+            // Validate CSRF token
+            const csrfTokenElement = document.querySelector('[name=csrfmiddlewaretoken]');
+            if (!csrfTokenElement) {
+                console.error("CSRF token not found!");
+                showToast("CSRF token missing!", "danger");
+                resetButton(submitButton, originalText);
+                return;
+            }
+            const csrfToken = csrfTokenElement.value;
+    
+            // Validate input
+            if (!topTemplate.trim() || !bottomTemplate.trim() || selectedDetails.length === 0) {
+                showToast("Please fill in all details before sending.", "warning");
+                resetButton(submitButton, originalText);
+                return;
+            }
+    
             fetch('{% url "send_vendor_emails" %}', {
                 method: 'POST',
                 headers: {
-                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                    'X-CSRFToken': csrfToken,
                     'Content-Type': 'application/json'
                 },
                 credentials: 'same-origin',
-                body: JSON.stringify({}) // Add the necessary request payload if required
+                body: JSON.stringify({
+                    top_template: topTemplate,
+                    bottom_template: bottomTemplate,
+                    selected_details: selectedDetails,
+                }),
             })
-                .then(response => response.json())
-                .then(data => {
-                    console.log("Server Response:", data);
-            
-                    const modalElement = document.getElementById('confirmVendorModal');
-                    if (modalElement) {
-                        // Initialize modal if not already initialized
-                        const modal = bootstrap.Modal.getInstance(modalElement) || new bootstrap.Modal(modalElement);
-            
-                        modalElement.addEventListener('shown.bs.modal', function () {
-                            modal.hide(); // Hide the modal after sending email
-                        });
-            
-                        if (data.status === 'success') {
-                            showToast("Emails sent successfully!", "success");
-                        } else {
-                            showToast("Error sending emails.", "danger");
-                        }
-                    } else {
-                        console.error("Modal element not found");
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    showToast("An error occurred.", "danger");
-                })
-                .finally(() => {
-                    // Assuming 'submitButton' and 'originalText' are defined before this block
-                    submitButton.innerHTML = originalText;
-                    submitButton.disabled = false;
-                });
-            
+            .then(response => response.json())
+            .then(data => {
+                console.log("Server Response:", data); // Debugging
+    
+                if (typeof data?.status === 'string' && data.status === 'success') {
+                    showToast("Emails sent successfully!", "success");
+                } else {
+                    console.error("Error message from server:", data);
+                    showToast("Error sending emails.", "danger");
+                }
+    
+                // Hide modal if it exists
+                const modalElement = document.getElementById('confirmModal');
+                if (modalElement) {
+                    const modal = bootstrap.Modal.getInstance(modalElement) || new bootstrap.Modal(modalElement);
+                    modal.hide();
+                } else {
+                    console.error("Modal element not found");
+                }
+            })
+            .catch(error => {
+                console.error('Fetch Error:', error);
+                showToast("An error occurred.", "danger");
+            })
+            .finally(() => {
+                resetButton(submitButton, originalText);
+            });
         });
+    
+        function resetButton(button, originalText) {
+            button.innerHTML = originalText;
+            button.disabled = false;
+        }
     
         function showToast(message, type) {
             const toastContainer = document.getElementById('toastContainer');
@@ -91,10 +126,11 @@
                 return;
             }
     
+            // Clear previous toast messages
             toastContainer.innerHTML = '';
     
-            const toastHTML = ` 
-                <div class="toast align-items-center text-white bg-${type} border-0 fade" role="alert" aria-live="assertive" aria-atomic="true">
+            const toastHTML = `
+                <div class="toast align-items-center text-white bg-${type} border-0 fade show" role="alert" aria-live="assertive" aria-atomic="true">
                     <div class="d-flex">
                         <div class="toast-body">
                             <i class="fas ${type === 'success' ? 'fa-check-circle' : 'fa-info-circle'} me-2"></i>
@@ -104,9 +140,10 @@
                     </div>
                 </div>`;
     
-            toastContainer.innerHTML += toastHTML;
-            const newToast = new bootstrap.Toast(toastContainer.lastElementChild);
-            setTimeout(() => newToast.show(), 100);
+            toastContainer.innerHTML = toastHTML;
+            const newToast = new bootstrap.Toast(toastContainer.firstElementChild);
+            newToast.show();
         }
     });
+    
 </script>

@@ -1,20 +1,15 @@
 import logging
 import pandas as pd
-from typing import Dict
 from django.core.files.storage import FileSystemStorage
 from django.contrib import messages
 from django.shortcuts import render, redirect
 from django.http import HttpRequest, HttpResponse
 from concurrent.futures import ThreadPoolExecutor
 from email.mime.multipart import MIMEMultipart
-from django.core.mail import EmailMessage
 from email.mime.text import MIMEText
-from email.mime.image import MIMEImage
 from django.http import JsonResponse
 from django.conf import settings
-from functools import partial
 from dotenv import load_dotenv
-import mimetypes
 import smtplib
 import os
 import json
@@ -265,11 +260,11 @@ def send_employee_emails(request):
             logger.info(f"Sending email to {email} with body:\n{email_body}")
 
             try:
-                email_service.send_email(
-                    subject="Roster Updated",
-                    body=email_body,
-                    recipient=email,
-                )
+                # email_service.send_email(
+                #     subject="Roster Updated",
+                #     body=email_body,
+                #     recipient=email,
+                # )
                 email_sent_count += 1
                 logger.info(f"Successfully sent email to {email}")
                 

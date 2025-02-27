@@ -1,91 +1,86 @@
-import os
-import json
 import pandas as pd
-import numpy as np
 import dataframe_image as dfi
-from datetime import time
+from datetime import datetime
 from django.conf import settings
+import logging
+import os
+import re
+
+logger = logging.getLogger('django')
+
+# Get the current date
+current_date = datetime.now().strftime("%Y-%m-%d")
 
 class TransportDataProcessor:
-    def __init__(self, file_path):
-        output_media_path = os.path.join(settings.MEDIA_ROOT, "vendor")
-        self.file_path = file_path
-        self.output_dir = output_media_path
-        self.route_dict = {}
+    def __init__(self, data, previous_vedor_name):
+        # Define output path and create directory if it doesn't exist
+        self.output_media_path = getattr(settings, "MEDIA_ROOT", "media")  # Fallback to 'media' if MEDIA_ROOT is not set
+        self.output_media_path = os.path.join(self.output_media_path, "vendor", f"vendor_{current_date}")
+        self.previous_vedor_name = previous_vedor_name
 
-    def read_excel_file(self):
-        """Read the Excel file and clean up headers."""
-        df = pd.read_csv(self.file_path, header=None)
-        df.columns = df.iloc[0]
-        df = df[1:]
-        df = df[df[df.columns[0]] != df.columns[0]]
-        df.reset_index(drop=True, inplace=True)
-        return df
+        if not os.path.exists(self.output_media_path):
+            os.makedirs(self.output_media_path, exist_ok=True)
 
-    @staticmethod
-    def convert_values(data):
-        """Convert non-serializable values in a dictionary."""
-        converted_data = {}
-        for key, value in data.items():
-            if isinstance(value, time):
-                converted_data[key] = value.strftime("%H:%M:%S")
-            elif isinstance(value, pd.Timestamp):
-                converted_data[key] = value.strftime("%Y-%m-%d %H:%M:%S") if not pd.isna(value) else None
-            elif pd.isna(value):
-                converted_data[key] = None
-            elif isinstance(value, np.float64):
-                converted_data[key] = float(value)
-            else:
-                converted_data[key] = value
-        return converted_data
+        self.data = data
+        self.generate_table_image()
 
-    def categorize_data(self, df):
-        """Categorize data into a nested dictionary by 'Vendor Name' and 'Route No'."""
-        for _, row in df.iterrows():
-            vendor, route_no = row["Vendor Name"], row["Route No"]
-            if vendor not in self.route_dict:
-                self.route_dict[vendor] = {}
-            if route_no not in self.route_dict[vendor]:
-                self.route_dict[vendor][route_no] = []
-            self.route_dict[vendor][route_no].append(self.convert_values(row.to_dict()))
+    def sanitize_filename(self, name):
+        """Sanitizes route number to be a valid filename"""
+        return re.sub(r'[^\w\-_]', '_', str(name))  # Replace invalid characters with '_'
 
-    @staticmethod
-    def save_df_as_image(df, path):
-        """Save DataFrame as an image with styling."""
-        df = df.set_index("S No")
-        styles = [
-            {'selector': 'thead th', 'props': [('background-color', '#ff9900'), ('color', 'black'), ('font-weight', 'bold'), ('text-align', 'left')]},
-            {'selector': 'td', 'props': [('white-space', 'nowrap'), ('overflow', 'hidden'), ('text-overflow', 'ellipsis')]}
-        ]
-        styled_df = df.style.set_table_styles(styles)
-        dfi.export(styled_df, path)
+    def generate_table_image(self):
+        vendor_dirs = set()
+        for route_no, entries in self.data.items():
+            df = pd.DataFrame(entries)
+            sanitized_route_no = self.sanitize_filename(route_no)  # Ensure filename is safe
+            sanitized_vendor_name = self.sanitize_filename(self.previous_vedor_name)
+            vendor_dir = os.path.join(self.output_media_path, sanitized_vendor_name)
+            if not os.path.exists(vendor_dir):
+                os.makedirs(vendor_dir, exist_ok=True)
+                
+            vendor_dirs.add(vendor_dir)
 
-    def save_images(self):
-        """Save each route's data as an image."""
-        os.makedirs(self.output_dir, exist_ok=True)
-        for vendor, routes in self.route_dict.items():
-            for route, users in routes.items():
-                df_users = pd.DataFrame(users)
-                df_users = df_users[['S No', 'Route No','Name','SUV','Shift','Vendor Name',   'Area','Location-Delhi'    ,'Pickup Time','Address (Office Reporting Time 07:20 Hrs & Departure Time 16:45 Hrs)','Vendor Email','Gender']]
-                filename = f"{vendor}_{route}.png".replace(" ", "_").replace("/", "-")
-                save_path = os.path.join(self.output_dir, filename)
-                try:
-                    self.save_df_as_image(df_users, save_path)
-                    print(f"✅ Saved: {save_path}")
-                except Exception as e:
-                    print(f"❌ Error saving {save_path}: {e}")
+            # Apply enhanced styling
+            styled_df = df.style.set_properties(**{
+                'border': '1px solid #ddd',
+                'padding': '10px',
+                'font-size': '13pt',
+                'text-align': 'left',
+                'background-color': '#ffffff',
+                'color': '#333'
+            }).set_table_styles([
+                {'selector': 'thead th', 'props': [
+                    ('background-color', '#ff9900'),
+                    ('color', 'white'),
+                    ('font-weight', 'bold'),
+                    ('text-align', 'left'),
+                    ('padding', '12px')
+                ]},
+                {'selector': 'td', 'props': [
+                    ('white-space', 'nowrap'),
+                    ('overflow', 'hidden'),
+                    ('text-overflow', 'ellipsis'),
+                    ('padding', '10px')
+                ]},
+                {'selector': 'tbody tr:nth-child(even)', 'props': [
+                    ('background-color', '#f9f9f9')
+                ]},
+                {'selector': 'tbody tr:hover', 'props': [
+                    ('background-color', '#ffcc80')
+                ]}
+            ])
 
-    def save_json(self):
-        """Save the categorized data as a JSON file."""
-        with open("route_data.json", "w") as f:
-            json.dump(self.route_dict, f, indent=4)
-        print("JSON saved successfully.")
+            # Save the image in the designated output directory
+            output_file = os.path.join(vendor_dir, f"{sanitized_vendor_name}_{sanitized_route_no}.png")
 
-    def process(self):
-        """Execute the full data processing pipeline."""
-        df = self.read_excel_file()
-        self.categorize_data(df)
-        self.save_images()
-        return self.route_dict
-        # self.save_json()
+            try:
+                dfi.export(styled_df, output_file, max_cols=-1, max_rows=-1)
+                logger.info(f"Image saved: {output_file}")
+            except Exception as e:
+                logger.info(f"Error saving image for route {route_no}: {e}")
+        
+        # logger.info(f"Vendor IMAGE DIRECTORY: {list(vendor_dirs)}")
+            
+        
+        return list(vendor_dirs) 
 

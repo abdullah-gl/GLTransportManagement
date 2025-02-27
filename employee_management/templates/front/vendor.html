@@ -157,26 +157,19 @@
 </div>
 
 
-
-<!-- Stylish Button Section -->
-<div class="d-flex justify-content-start align-items-center mt-4 gap-4">
-
-    <!-- Trigger Modal instead of Form Submit -->
-    <button type="button" class="btn btn-primary px-4 py-2 rounded-pill shadow-sm d-flex align-items-center gap-2" 
-        data-bs-toggle="modal" data-bs-target="#confirmVendorModal">
-        <i class="fas fa-envelope fa-lg"></i> Send Mail to Vendors
-    </button>
-
-    <!-- Include the Popup -->
-    {% include 'front/includes/popup_vendor.html' %}
-
-    <form method="POST" action="">
-        {% csrf_token %}
-        <button type="submit" class="btn btn-success px-4 py-2 rounded-pill shadow-sm d-flex align-items-center gap-2">
-            <i class="fab fa-whatsapp fa-lg"></i> Send WhatsApp
+<!-- Next Page button -->
+<div class="d-flex justify-content-end pt-3">
+    <a href="{% url 'vendor_message_template' %}" class="text-decoration-none">
+        <button type="button" class="btn btn-primary px-4 py-2 rounded-pill shadow-sm d-flex align-items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"
+                class="bi bi-arrow-right-circle-fill" viewBox="0 0 16 16">
+                <path
+                    d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0M4.5 7.5a.5.5 0 0 0 0 1h5.793l-2.147 2.146a.5.5 0 0 0 .708.708l3-3a.5.5 0 0 0 0-.708l-3-3a.5.5 0 1 0-.708.708L10.293 7.5z" />
+            </svg> Next Page
         </button>
-    </form>
+    </a>
 </div>
+
 
 
 

@@ -14,12 +14,13 @@ from email import encoders
 import mimetypes
 import smtplib
 import os
+from pathlib import Path
+import json
 from dotenv import load_dotenv
 from .transport_image import TransportDataProcessor
 
-# Initialize logging and environment variables
-logger = logging.getLogger('django')
 load_dotenv()
+logger = logging.getLogger('django')
 
 class Config:
     """Configuration settings for the application"""
@@ -40,10 +41,7 @@ class Config:
     
     # Required columns for vendor data
     REQUIRED_COLUMNS = [
-        'S No', 'Route No', 'Name', 'SUV', 'Shift',
-        'Vendor Name', 'Area', 'Location-Delhi', 'Pickup Time',
-        'Address (Office Reporting Time 07:20 Hrs & Departure Time 16:45 Hrs)',
-        'Vendor Email', 'Gender'
+        'S No', 'Route No', 'Name', 'Vendor Names','Vendor Emails'
     ]
 
 class FileHandlerError(Exception):
@@ -138,17 +136,56 @@ class EmailService:
         """Initialize email service with credentials"""
         self.sender_email = Config.EMAIL_HOST_USER
         self.sender_password = Config.EMAIL_HOST_PASSWORD
+        self.smtp_host = Config.EMAIL_HOST
+        self.smtp_port = Config.EMAIL_PORT
         
         if not self.sender_email or not self.sender_password:
             raise EmailServiceError("Email credentials not properly configured")
     
-    @staticmethod
-    def attach_banner_image(msg, img_path):
-        with open(img_path, "rb") as img_file:
-            img = MIMEImage(img_file.read(), _subtype=mimetypes.guess_type(img_path)[0].split('/')[1])
-            img.add_header("Content-ID", "<banner>")
-            img.add_header("Content-Disposition", "inline", filename=os.path.basename(img_path))
-            msg.attach(img)
+    
+    def send_emaill(self, subject, body, recipient, folder):
+        if not isinstance(recipient, str) or '@' not in recipient:
+            logger.warning(f"Invalid email format: {recipient}")
+            return False
+
+        try:
+            msg = MIMEMultipart()
+            msg['From'] = self.sender_email
+            msg['To'] = recipient
+            msg['Subject'] = subject
+            msg.attach(MIMEText(body, 'html'))
+
+            # Attach all .png files from the given folder
+            for filename in os.listdir(folder):
+                if filename.endswith(".png"):
+                    file_path = os.path.join(folder, filename)
+                    logger.info(f"IMAGE PATH .png: {file_path}")
+                    
+                    with open(file_path, "rb") as attachment:
+                        part = MIMEBase("application", "octet-stream")
+                        part.set_payload(attachment.read())
+
+                    encoders.encode_base64(part)
+                    part.add_header("Content-Disposition", f"attachment; filename={filename}")
+                    msg.attach(part)
+
+            with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
+                server.starttls()
+                server.login(self.sender_email, self.sender_password)
+                server.send_message(msg)
+
+            logger.info(f"Email with attachments sent successfully to {recipient}")
+            return True
+
+        except smtplib.SMTPException as e:
+            logger.error(f"SMTP error while sending email to {recipient}: {str(e)}")
+        except Exception as e:
+            logger.error(f"Unexpected error while sending email to {recipient}: {str(e)}")
+
+        return False
+    
+    
+
 
     @staticmethod
     def format_route_email_body(route_data: str) -> str:
@@ -199,136 +236,62 @@ class EmailService:
         """
 
 
-    def send_email(self, vendor_email: str, subject: str, body: str, 
-                  vendor_file_name: str, vendor_data: dict, vendor_name: str, img_path) -> bool:
-        """
-        Sends email with attachments to vendors
-        
-        Args:
-            vendor_email: Recipient email address
-            subject: Email subject
-            body: Email body
-            vendor_file_name: Path to vendor file attachment
-            vendor_data: Vendor data dictionary
-            vendor_name: Name of the vendor
-            
-        Returns:
-            bool: True if email sent successfully, False otherwise
-        """
-        if '@' not in vendor_email:
-            logger.warning(f"Invalid email address: {vendor_email}")
-            return False
-
-        try:
-            # Create email message
-            msg = MIMEMultipart()
-            msg['Subject'] = subject
-            msg['From'] = self.sender_email
-            msg['To'] = vendor_email
-            
-            
-            self.attach_banner_image(msg, img_path)
-            
-            # Attach Excel file
-            self._attach_file(msg, vendor_file_name)
-            
-            # Attach related images
-            self._attach_vendor_images(msg, vendor_file_name, vendor_name)
-            
-            # Add email body
-            msg.attach(MIMEText(body, 'html'))
-            
-            # Send email
-            with smtplib.SMTP(Config.EMAIL_HOST, Config.EMAIL_PORT) as server:
-                server.starttls()
-                server.login(self.sender_email, self.sender_password)
-                server.send_message(msg)
-            
-            logger.info(f"Email sent successfully to {vendor_email}")
-            return True
-
-        except Exception as e:
-            logger.error(f"Failed to send email to {vendor_email}: {str(e)}")
-            return False
-
-    def _attach_file(self, msg: MIMEMultipart, file_path: str) -> None:
-        """Helper method to attach files to email"""
-        with open(file_path, "rb") as f:
-            part = MIMEBase("application", "octet-stream")
-            part.set_payload(f.read())
-            encoders.encode_base64(part)
-            part.add_header(
-                "Content-Disposition",
-                f"attachment; filename={os.path.basename(file_path)}",
-            )
-            msg.attach(part)
-
-    def _attach_vendor_images(self, msg: MIMEMultipart, vendor_file_name: str, 
-                            vendor_name: str) -> None:
-        """Helper method to attach vendor-specific images to email"""
-        vendor_directory_path = os.path.dirname(vendor_file_name)
-        image_pattern = vendor_name.lower().replace(" ", "_")
-        
-        for filename in os.listdir(vendor_directory_path):
-            if (filename.lower().endswith((".png", ".jpg", ".jpeg")) and 
-                image_pattern in filename.lower()):
-                self._attach_file(msg, os.path.join(vendor_directory_path, filename))
-
 
 def handle_vendor_form(request: HttpRequest) -> HttpResponse:
     """
-    Handles the vendor form submission and file processing
-    
+    Handles vendor form submission and file processing.
+
     Args:
-        request: HTTP request object
-        
+        request (HttpRequest): The HTTP request object.
+
     Returns:
-        HttpResponse: Rendered template with processing results
+        HttpResponse: Rendered template with processing results.
     """
+    # Handle GET request
     if request.method != 'POST':
-        return render(request, 'front/vendor.html', 
-                     {'data_dict': request.session.get('vendor_data_dict')})
+        return render(request, 'front/vendor.html', {'data_dict': request.session.get('vendor_data_dict')})
+
+    uploaded_file = request.FILES.get('vendor_file')
+
+    # Validate file
+    is_valid, error_message = FileHandler.validate_file(uploaded_file)
+    if not is_valid:
+        messages.error(request, error_message)
+        return redirect('handle_vendor_form')
+
+    # Define vendor media path
+    vendor_media_path = Path(settings.MEDIA_ROOT) / "vendor"
+    vendor_media_path.mkdir(parents=True, exist_ok=True)
+
+    # Save file
+    fs = FileSystemStorage(location=str(vendor_media_path))
+    file_path = Path(fs.save(uploaded_file.name, uploaded_file))
+    full_path = vendor_media_path / file_path
 
     try:
-        uploaded_file = request.FILES.get('vendor_file')
-        is_valid, error_message = FileHandler.validate_file(uploaded_file)
-        
-        if not is_valid:
-            messages.error(request, error_message)
-            return redirect('handle_vendor_form')
-        
-        # Create vendor media directory if it doesn't exist
-        vendor_media_path = os.path.join(settings.MEDIA_ROOT, "vendor")
-        os.makedirs(vendor_media_path, exist_ok=True)
-        
-        # Save and process file
-        fs = FileSystemStorage(location=vendor_media_path)
-        file_path = fs.save(uploaded_file.name, uploaded_file)
-        full_path = fs.path(file_path)
+        # Process file
+        data = FileHandler.process_file(str(full_path))
+        vendor_data_dict = data.to_dict(orient='records')
 
-        try:
-            data = FileHandler.process_file(full_path)
-            vendor_data_dict = data.to_dict(orient='records')
-            
-            # Store processed data in session
-            request.session['vendor_data_dict'] = vendor_data_dict
-            request.session['uploaded_file_path'] = full_path
-            
-            messages.success(request, 'File processed successfully!')
+        # Store data in session
+        request.session.update({
+            'vendor_data_dict': vendor_data_dict,
+            'uploaded_file_path': str(full_path)
+        })
+        
+        messages.success(request, 'File processed successfully!')
 
-        except FileHandlerError as e:
-            logger.error(f"File processing error: {str(e)}")
-            messages.error(request, str(e))
-            if os.path.exists(full_path):
-                os.remove(full_path)
+    except FileHandlerError as e:
+        logger.error(f"File processing error: {e}")
+        messages.error(request, str(e))
+        full_path.unlink(missing_ok=True)  # Remove file if processing fails
 
     except Exception as e:
-        logger.error(f"Unexpected error in handle_vendor_form: {str(e)}", exc_info=True)
-        messages.error(request, "An unexpected error occurred while processing the file")
+        logger.error(f"Unexpected error in handle_vendor_form: {e}", exc_info=True)
+        messages.error(request, "An unexpected error occurred while processing the file.")
+        full_path.unlink(missing_ok=True)
 
-    return render(request, 'front/vendor.html', 
-                 {'data_dict': request.session.get('vendor_data_dict')})
-
+    return render(request, 'front/vendor.html', {'data_dict': request.session.get('vendor_data_dict')})
 
 
 def search_vendor_data(request):
@@ -364,92 +327,131 @@ def sort_vendor_data(request):
 
 
 
-def send_vendor_emails(request: HttpRequest) -> HttpResponse:    
+
+
+
+def send_vendor_emails(request: HttpRequest) -> HttpResponse:
     """
-    Processes vendor data and sends emails to vendors
-    
+    Processes vendor data and sends emails with PNG attachments to vendors.
+
     Args:
-        request: HTTP request object
-        
+        request: HTTP request object.
+
     Returns:
-        JsonResponse: Processing results and status
+        JsonResponse: JSON response with email processing results.
     """
+
+    # Ensure the request method is POST; otherwise, return an error response.
     if request.method != 'POST':
         logger.info("Request method is not POST")
         return JsonResponse({"error": "Invalid method"}, status=400)
 
     try:
-        # Get vendor data and file path from session        
-        vendor_data = request.session.get('vendor_data_dict')
-        logger.info(vendor_data)
-        file_path = request.session.get('uploaded_file_path')
-        
-        if not vendor_data or not file_path:
-            logger.error("Missing vendor data or file path in session")
-            return JsonResponse({"error": "No data or file found"}, status=400)
+        # Parse JSON data from the request body.
+        data = json.loads(request.body.decode("utf-8"))
 
-        if not os.path.exists(file_path):
-            logger.error(f"Attachment file not found: {file_path}")
-            return JsonResponse({"error": "Attachment file not found"}, status=400)
+        # Extract required data from the request payload.
+        top_template = data.get("top_template", "").strip()
+        bottom_template = data.get("bottom_template", "").strip()
+        selected_details = data.get("selected_details", [])
 
-        # Process vendor data
-        processor = TransportDataProcessor(file_path)
-        vendor_json_data = processor.process()
+        # Retrieve vendor data and file path from the session.
+        vendor_data = request.session.get('vendor_data_dict', [])
+        file_path = request.session.get('uploaded_file_path', "")
+
+        # Extract unique vendor names and sanitize them.
+        # unique_vendor_names = {entry.get("Vendor Names", "").strip().replace(" ", "_") 
+        #                        for entry in vendor_data if "Vendor Names" in entry}
+
+        # Extract unique vendor emails mapped to vendor names.
+        unique_vendor_email = {}
+        for entry in vendor_data:
+            vendor_name = entry.get("Vendor Names", "").strip()
+            vendor_email = entry.get("Vendor Emails", "").strip()
+
+            # Validate and store vendor emails
+            if vendor_name and vendor_email and "@" in vendor_email:
+                sanitized_name = vendor_name.replace(" ", "_")
+                unique_vendor_email.setdefault(sanitized_name, set()).add(vendor_email)
+
+        # Log extracted vendor emails.
+        logger.info(f"Vendor EMAILS: {unique_vendor_email}")
+
+        # Dictionary to store route-wise vendor entries.
+        vendors_image_dirs = []
+        route_wise_entries = {}
+        previous_route_no = None  # Keeps track of the last seen route number.
+        previous_vendor_name = None
+
+        # Iterate through vendor data to group entries by Route No.
+        for entry in vendor_data:
+            # Extract only the selected details for the current vendor entry.
+            selected_entry = {key: entry[key] for key in selected_details if key in entry}
+            current_route_no = entry.get("Route No", "Unknown")  # Default to 'Unknown' if missing.
+            current_vendor_name = entry.get("Vendor Names", "Unknown")
+            vendor_email = entry.get("Vendor Emails", "").strip()
+
+            # Skip invalid emails.
+            if '@' not in vendor_email:
+                continue
+
+            # If Route No changes, process the collected route-wise entries.
+            if previous_route_no and current_route_no != previous_route_no:
+                processor = TransportDataProcessor(route_wise_entries, previous_vendor_name)
+                vendors_image_directory = processor.generate_table_image()
+                vendors_image_dirs.append(vendors_image_directory)
+
+                # Reset the dictionary for new route-wise entries.
+                route_wise_entries = {}
+
+                # Log separator for readability.
+                logger.info(f"{'~' * 100}")
+
+            # Ensure the route number key exists before appending new entries.
+            route_wise_entries.setdefault(current_route_no, []).append(selected_entry)
+
+            # Update the last seen Route No and Vendor Name.
+            previous_route_no = current_route_no   
+            previous_vendor_name = current_vendor_name   
         
-        # Initialize email service
-        email_service = EmailService()
+        # Flatten and extract unique vendor directories.
+        flat_vendor_dirs = [item for sublist in vendors_image_dirs for item in sublist]
+        unique_vendor_dirs = set(flat_vendor_dirs)
+
+        # Log extracted vendor directories.
+        logger.info(f"Vendor IMAGE DIRECTORY: {unique_vendor_dirs}")
+        logger.info(f"Vendor IMAGE LEN: {len(unique_vendor_dirs)}")
+
+        # Construct full email body in HTML format.
+        subject = "Roaster"
+        email_body = f"""
+        <p>{top_template}</p>
+        <p>{bottom_template}</p>
+        """
+
+        # Send emails to vendors with their respective PNG attachments.
         success_count = 0
         failed_emails = []
         processed_emails = set()
 
-        vendor_media_path = os.path.join(settings.MEDIA_ROOT, "vendor")
-        img_path = os.path.join(settings.STATIC_MEDIA_URL, "images" , "header_img.png")
-        logger.info(f"IMAGE PATH: {img_path}")
+        for vendor_name, emails in unique_vendor_email.items():
+            for folder in unique_vendor_dirs:
+                if vendor_name in folder:  # Check if vendor name is part of the folder path.
+                    recipient_emails = ", ".join(emails)  # Convert set to comma-separated string.
+                    logger.info(f"Sending Email to: {recipient_emails}")
+                    logger.info(f"Vendor Folder: {folder}")
 
-        for vendor_name, vendor_data in vendor_json_data.items():
-            logger.info(f"Processing vendor: {vendor_name}")
-            
-            # Get vendor email from first route
-            for route_no, route_data in vendor_data.items():
-                vendor_email = route_data[0].get('Vendor Email', '')
-                break
+                    email_service = EmailService()
+                    email_sent = email_service.send_emaill(subject, email_body, recipient_emails, folder)
 
-            if vendor_email in processed_emails:
-                continue
+                    # Track success/failure.
+                    if email_sent:
+                        success_count += 1
+                        processed_emails.update(emails)
+                    else:
+                        failed_emails.extend(emails)
 
-            processed_emails.add(vendor_email)
-            
-            try:
-                # Prepare email content
-                subject = f'Route {vendor_name} - Vehicle Details'
-                body = email_service.format_route_email_body(vendor_name)
-                
-                # Create vendor-specific Excel file
-                df_dict = {
-                    key: pd.DataFrame(value) for key, value in vendor_data.items()
-                }
-                final_df = pd.concat(df_dict.values(), ignore_index=True)
-                final_df = final_df[Config.REQUIRED_COLUMNS]
-
-                vendor_file_name = os.path.join(vendor_media_path, 
-                                                f'{vendor_name}_vendor_route.xlsx')
-                final_df.to_excel(vendor_file_name, index=False)
-                
-                # Send email
-                if email_service.send_email(vendor_email, subject, body, 
-                                          vendor_file_name, vendor_data, vendor_name, img_path=img_path):
-                    success_count += 1
-                else:
-                    failed_emails.append(vendor_email)
-
-                # Cleanup temporary files
-                cleanup_vendor_files(vendor_media_path, vendor_name, vendor_file_name)
-
-            except Exception as e:
-                logger.error(f"Error processing vendor {vendor_name}: {str(e)}")
-                failed_emails.append(vendor_email)
-                continue
-
+        # Return processing results.
         return JsonResponse({
             "message": "Email processing completed",
             "success_count": success_count,
@@ -464,6 +466,8 @@ def send_vendor_emails(request: HttpRequest) -> HttpResponse:
             "error": "An unexpected error occurred while sending emails",
             "details": str(e)
         }, status=500)
+
+
 
 
 def cleanup_vendor_files(vendor_media_path: str, vendor_name: str, vendor_file_name: str)-> None:
@@ -491,3 +495,13 @@ def cleanup_vendor_files(vendor_media_path: str, vendor_name: str, vendor_file_n
 def vendor_view(request):
     return render(request, 'front/vendor.html')
     
+def vendor_message_template(request):
+    return render(request, 'front/vendor_message_template.html')
+
+
+def fetch_columns_vendor(request):
+    data_dict = request.session.get('vendor_data_dict', [])    
+    
+    # Extract column names from the first dictionary entry if available
+    columns = list(data_dict[0].keys()) if data_dict else []
+    return JsonResponse({"columns": columns})

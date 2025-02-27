@@ -59,8 +59,9 @@
                     selectedDetails.push(checkbox.value);
                 });
 
+            
             // Validate CSRF token
-            const csrfTokenElement = document.querySelector('input[name="csrfmiddlewaretoken"]');
+            const csrfTokenElement = document.querySelector('[name=csrfmiddlewaretoken]');
             if (!csrfTokenElement) {
                 console.error("CSRF token not found!");
                 showToast("CSRF token missing!", "danger");
@@ -70,7 +71,7 @@
             const csrfToken = csrfTokenElement.value;
 
             // Validate input
-            if (!topTemplate.trim() || !bottomTemplate.trim() || selectedDetails.length === 0) {
+            if (!topTemplate || !topTemplate.trim() || !bottomTemplate || !bottomTemplate.trim() || selectedDetails.length === 0) {
                 showToast("Please fill in all details before sending.", "warning");
                 resetButton(submitButton, originalText);
                 return;
@@ -93,14 +94,22 @@
                 .then(data => {
                     const modalElement = document.getElementById('confirmModal');
                     if (modalElement) {
+                        // Initialize modal if not already initialized
                         const modal = bootstrap.Modal.getInstance(modalElement) || new bootstrap.Modal(modalElement);
-                        modal.hide(); // Hide the modal immediately after successful request
-                    }
+                        
+                        // Ensure modal is completely ready before hiding it
+                        modalElement.addEventListener('shown.bs.modal', function () {
+                            modal.hide();
+                        });
 
-                    if (data.status === 'success') {
-                        showToast("Emails sent successfully!", "success");
+                        if (typeof data.status === 'string' && data.status === 'success') {
+                            showToast("Emails sent successfully!", "success");
+                        } else {
+                            console.log("Error message");
+                            showToast("Error sending emails.", "danger");
+                        }
                     } else {
-                        showToast("Error sending emails.", "danger");
+                        console.error("Modal element not found");
                     }
                 })
                 .catch(error => {
@@ -112,19 +121,16 @@
                     submitButton.disabled = false;
                 });
         });
-
+    
         function showToast(message, type) {
             const toastContainer = document.getElementById('toastContainer');
             if (!toastContainer) {
                 console.error("Toast container not found!");
                 return;
             }
-
-            // Clear previous toasts
-            toastContainer.innerHTML = "";
-
+    
             const toastHTML = `
-                <div class="toast align-items-center text-white bg-${type} border-0 fade show" role="alert" aria-live="assertive" aria-atomic="true">
+                <div class="toast align-items-center text-white bg-${type} border-0 fade" role="alert" aria-live="assertive" aria-atomic="true">
                     <div class="d-flex">
                         <div class="toast-body">
                             <i class="fas ${type === 'success' ? 'fa-check-circle' : 'fa-info-circle'} me-2"></i>
@@ -133,10 +139,10 @@
                         <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
                     </div>
                 </div>`;
-
+    
             toastContainer.innerHTML += toastHTML;
             const newToast = new bootstrap.Toast(toastContainer.lastElementChild);
-            newToast.show();
+            setTimeout(() => newToast.show(), 100);
         }
     });
 </script>
