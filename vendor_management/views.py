@@ -18,6 +18,10 @@ from pathlib import Path
 import json
 from dotenv import load_dotenv
 from .transport_image import TransportDataProcessor
+import pandas as pd
+from xlsxwriter import Workbook
+from io import BytesIO
+
 
 load_dotenv()
 logger = logging.getLogger('django')
@@ -114,7 +118,6 @@ class FileHandler:
                 data = pd.read_excel(file_path)
                 data = data.map(lambda x: x.strip() if isinstance(x, str) else x)
                 
-            
             if data.empty:
                 raise FileHandlerError("File contains no data")
             
@@ -143,7 +146,17 @@ class EmailService:
             raise EmailServiceError("Email credentials not properly configured")
     
     
-    def send_emaill(self, subject, body, recipient, folder):
+    def send_emaill(self, subject, body, recipient, folder, vendor_entries,vendor_name):
+        
+        df = pd.DataFrame(vendor_entries)      # Convert to DataFrame
+        
+        # Save DataFrame to an in-memory Excel file
+        excel_buffer = BytesIO()
+        with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
+            df.to_excel(writer, index=False, sheet_name=vendor_name)
+        excel_buffer.seek(0)  # Move cursor to the start of the buffer
+        
+        
         if not isinstance(recipient, str) or '@' not in recipient:
             logger.warning(f"Invalid email format: {recipient}")
             return False
@@ -154,6 +167,13 @@ class EmailService:
             msg['To'] = recipient
             msg['Subject'] = subject
             msg.attach(MIMEText(body, 'html'))
+            
+            # 🔹 Attach Excel File (Vendor Data)
+            part = MIMEBase("application", "octet-stream")
+            part.set_payload(excel_buffer.getvalue())
+            encoders.encode_base64(part)
+            part.add_header("Content-Disposition", f"attachment; filename={vendor_name}_Data.xlsx")
+            msg.attach(part)
 
             # Attach all .png files from the given folder
             for filename in os.listdir(folder):
@@ -324,12 +344,6 @@ def sort_vendor_data(request):
     return JsonResponse({"data": sorted_data})
 
 
-
-
-
-
-
-
 def send_vendor_emails(request: HttpRequest) -> HttpResponse:
     """
     Processes vendor data and sends emails with PNG attachments to vendors.
@@ -340,7 +354,7 @@ def send_vendor_emails(request: HttpRequest) -> HttpResponse:
     Returns:
         JsonResponse: JSON response with email processing results.
     """
-
+    
     # Ensure the request method is POST; otherwise, return an error response.
     if request.method != 'POST':
         logger.info("Request method is not POST")
@@ -363,6 +377,7 @@ def send_vendor_emails(request: HttpRequest) -> HttpResponse:
         # unique_vendor_names = {entry.get("Vendor Names", "").strip().replace(" ", "_") 
         #                        for entry in vendor_data if "Vendor Names" in entry}
 
+
         # Extract unique vendor emails mapped to vendor names.
         unique_vendor_email = {}
         for entry in vendor_data:
@@ -380,6 +395,7 @@ def send_vendor_emails(request: HttpRequest) -> HttpResponse:
         # Dictionary to store route-wise vendor entries.
         vendors_image_dirs = []
         route_wise_entries = {}
+        vendor_data_dict = {} 
         previous_route_no = None  # Keeps track of the last seen route number.
         previous_vendor_name = None
 
@@ -389,11 +405,19 @@ def send_vendor_emails(request: HttpRequest) -> HttpResponse:
             selected_entry = {key: entry[key] for key in selected_details if key in entry}
             current_route_no = entry.get("Route No", "Unknown")  # Default to 'Unknown' if missing.
             current_vendor_name = entry.get("Vendor Names", "Unknown")
+            current_vendor_name = current_vendor_name.replace(' ', '_')
             vendor_email = entry.get("Vendor Emails", "").strip()
-
+            
             # Skip invalid emails.
             if '@' not in vendor_email:
                 continue
+
+            # Store all row data for each vendor name.
+            if current_vendor_name not in vendor_data_dict:
+                vendor_data_dict[current_vendor_name] = []
+            vendor_data_dict[current_vendor_name].append(entry) 
+
+            
 
             # If Route No changes, process the collected route-wise entries.
             if previous_route_no and current_route_no != previous_route_no:
@@ -418,9 +442,11 @@ def send_vendor_emails(request: HttpRequest) -> HttpResponse:
         flat_vendor_dirs = [item for sublist in vendors_image_dirs for item in sublist]
         unique_vendor_dirs = set(flat_vendor_dirs)
 
+        # logger.info(f"Vendors DATA: {vendor_data_dict}")
+        
         # Log extracted vendor directories.
-        logger.info(f"Vendor IMAGE DIRECTORY: {unique_vendor_dirs}")
-        logger.info(f"Vendor IMAGE LEN: {len(unique_vendor_dirs)}")
+        # logger.info(f"Vendor IMAGE DIRECTORY: {unique_vendor_dirs}")
+        # logger.info(f"Vendor IMAGE LEN: {len(unique_vendor_dirs)}")
 
         # Construct full email body in HTML format.
         subject = "Roaster"
@@ -435,21 +461,25 @@ def send_vendor_emails(request: HttpRequest) -> HttpResponse:
         processed_emails = set()
 
         for vendor_name, emails in unique_vendor_email.items():
-            for folder in unique_vendor_dirs:
-                if vendor_name in folder:  # Check if vendor name is part of the folder path.
-                    recipient_emails = ", ".join(emails)  # Convert set to comma-separated string.
-                    logger.info(f"Sending Email to: {recipient_emails}")
-                    logger.info(f"Vendor Folder: {folder}")
+            if vendor_name in vendor_data_dict:
+                vendor_entries = vendor_data_dict[vendor_name]
+                for folder in unique_vendor_dirs:
+                    if vendor_name in folder:  # Check if vendor name is part of the folder path.
+                        recipient_emails = ", ".join(emails)  # Convert set to comma-separated string.
+                        logger.info(f"Sending Email to: {recipient_emails}")
+                        logger.info(f"Vendor Folder: {folder}")
+                        # logger.info(f"Vendor name: {vendor_entries}")
+                        
 
-                    email_service = EmailService()
-                    email_sent = email_service.send_emaill(subject, email_body, recipient_emails, folder)
+                        email_service = EmailService()
+                        email_sent = email_service.send_emaill(subject, email_body, recipient_emails, folder, vendor_entries,vendor_name)
 
-                    # Track success/failure.
-                    if email_sent:
-                        success_count += 1
-                        processed_emails.update(emails)
-                    else:
-                        failed_emails.extend(emails)
+                        # # Track success/failure.
+                        # if email_sent:
+                        #     success_count += 1
+                        #     processed_emails.update(emails)
+                        # else:
+                        #     failed_emails.extend(emails)
 
         # Return processing results.
         return JsonResponse({

@@ -250,21 +250,32 @@ def send_employee_emails(request):
             # Construct full email body in HTML format
             email_body = f"""
             <p>{top_template}</p<br>
-            <div style="padding: 10px; font-size: 14px; background-color: #eef3ff; 
-            border-left: 4px solid #4a90e2; margin: 10px 0;">
+            <div style="
+                padding: 14px; 
+                font-size: 14px; 
+                background: linear-gradient(to right, #eef5ff, #dbe9ff); 
+                border-left: 6px solid #3572ef; 
+                margin: 15px 0; 
+                border-radius: 8px;
+                box-shadow: 0 4px 6px rgba(53, 114, 239, 0.2);
+                font-family: 'Segoe UI', Arial, sans-serif;
+                color: #2c3e50;
+                font-weight: 500;
+                line-height: 1.6;
+            ">
                 {each_employee_data}
-            </div>
+            </div>  
             <p>{bottom_template}</p>
             """
 
             logger.info(f"Sending email to {email} with body:\n{email_body}")
 
             try:
-                # email_service.send_email(
-                #     subject="Roster Updated",
-                #     body=email_body,
-                #     recipient=email,
-                # )
+                email_service.send_email(
+                    subject="Roster Updated",
+                    body=email_body,
+                    recipient=email,
+                )
                 email_sent_count += 1
                 logger.info(f"Successfully sent email to {email}")
                 
