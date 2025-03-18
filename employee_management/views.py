@@ -251,17 +251,16 @@ def send_employee_emails(request):
             email_body = f"""
             <p>{top_template}</p<br>
             <div style="
-                padding: 14px; 
-                font-size: 14px; 
-                background: linear-gradient(to right, #eef5ff, #dbe9ff); 
-                border-left: 6px solid #3572ef; 
-                margin: 15px 0; 
-                border-radius: 8px;
-                box-shadow: 0 4px 6px rgba(53, 114, 239, 0.2);
+                padding: 16px; 
+                font-size: 15px; 
+                background: linear-gradient(135deg, #f0f7ff, #dbe9ff); 
+                border-radius: 10px;
+                box-shadow: 0 4px 10px rgba(53, 114, 239, 0.15);
                 font-family: 'Segoe UI', Arial, sans-serif;
                 color: #2c3e50;
                 font-weight: 500;
                 line-height: 1.6;
+                text-align: left;
             ">
                 {each_employee_data}
             </div>  

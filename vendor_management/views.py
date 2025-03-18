@@ -9,9 +9,7 @@ from django.http import HttpRequest, HttpResponse, JsonResponse
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
-from email.mime.image import MIMEImage
 from email import encoders
-import mimetypes
 import smtplib
 import os
 from pathlib import Path
@@ -19,7 +17,6 @@ import json
 from dotenv import load_dotenv
 from .transport_image import TransportDataProcessor
 import pandas as pd
-from xlsxwriter import Workbook
 from io import BytesIO
 
 
