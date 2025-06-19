@@ -122,6 +122,7 @@ class EmailService:
 
 
 
+
 """Handle file upload and process employee data."""
 def handle_employee_form(request: HttpRequest) -> HttpResponse:
     if request.method != 'POST':
@@ -166,6 +167,7 @@ def handle_employee_form(request: HttpRequest) -> HttpResponse:
                  {'data_dict': request.session.get('data_dict')})
 
 
+
 def search_employee_data(request):
     search_query = request.GET.get('search', '').strip().lower()
     data_dict = request.session.get('data_dict', [])
@@ -181,6 +183,7 @@ def search_employee_data(request):
     return JsonResponse({'data': filtered_data})
 
 
+
 def sort_employee_data(request):
     column = request.GET.get('column')
     direction = request.GET.get('direction', 'asc')
@@ -194,6 +197,7 @@ def sort_employee_data(request):
 
     return JsonResponse({"data": sorted_data})
 
+
 def fetch_columns(request):
     data_dict = request.session.get('data_dict', [])
     
@@ -203,8 +207,10 @@ def fetch_columns(request):
     return JsonResponse({"columns": columns})
 
 
+
 def employee_message_template(request):
     return render(request, 'front/employee_message_template.html')
+
 
 
 def send_employee_emails(request):
